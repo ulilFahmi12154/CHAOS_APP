@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "868981807041",
+    "project_id": "chaos-app-4dd51",
+    "storage_bucket": "chaos-app-4dd51.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:868981807041:android:c3695ba0a70cc855fec140",
+        "android_client_info": {
+          "package_name": "com.example.chaos_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQPkwq13HYs4P8cgW2D_UCNw-trAORoiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
