@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class CustomInput extends StatelessWidget {
+class CustomInput extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final bool obscure;
@@ -15,13 +15,26 @@ class CustomInput extends StatelessWidget {
   });
 
   @override
+  State<CustomInput> createState() => _CustomInputState();
+}
+
+class _CustomInputState extends State<CustomInput> {
+  late bool _obscure;
+
+  @override
+  void initState() {
+    super.initState();
+    _obscure = widget.obscure;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
-      obscureText: obscure,
+      controller: widget.controller,
+      obscureText: _obscure,
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: Colors.green.shade700),
-        labelText: label,
+        prefixIcon: Icon(widget.icon, color: Colors.green.shade700),
+        labelText: widget.label,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
@@ -32,6 +45,16 @@ class CustomInput extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: Colors.green.shade400, width: 1.5),
         ),
+        // show suffix eye icon only for password fields
+        suffixIcon: widget.obscure
+            ? IconButton(
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.grey.shade600,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              )
+            : null,
       ),
     );
   }
