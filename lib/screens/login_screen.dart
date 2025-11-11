@@ -38,65 +38,166 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: Colors.green.shade50,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.eco, size: 80, color: Colors.green),
-              const SizedBox(height: 15),
-              const Text(
-                "Welcome Back 🌱",
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background image (top area)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: size.height * 0.45, // tampilkan 55% dari tinggi layar
+            child: Image.asset(
+              'assets/images/logregfor.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (c, e, s) =>
+                  Container(color: const Color(0xFF0B6623)),
+            ),
+          ),
+
+          // Fixed content sheet positioned at bottom (non-scrollable)
+          Positioned(
+            top: size.height * 0.40,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: double.infinity,
+              // allow content to scroll when keyboard appears
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(40),
+                ),
               ),
-              const SizedBox(height: 30),
-              CustomInput(
-                controller: emailCtrl,
-                label: "Email",
-                icon: Icons.email,
-              ),
-              const SizedBox(height: 15),
-              CustomInput(
-                controller: passCtrl,
-                label: "Password",
-                icon: Icons.lock,
-                obscure: true,
-              ),
-              const SizedBox(height: 25),
-              loading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                  // Small centered logo inside the sheet
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        height: 64,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                          Icons.agriculture,
+                          size: 64,
+                          color: Colors.green,
                         ),
-                        minimumSize: const Size(double.infinity, 48),
-                      ),
-                      onPressed: _login,
-                      child: const Text(
-                        "Login",
-                        style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                ),
-                child: const Text(
-                  "Belum punya akun? Daftar sekarang",
-                  style: TextStyle(color: Colors.green),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+                  ),
+
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Column(
+                      children: const [
+                        Text(
+                          "Selamat datang !",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          "Masuk ke Akun Anda",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  CustomInput(
+                    controller: emailCtrl,
+                    label: "Masukkan Email",
+                    icon: Icons.email_outlined,
+                  ),
+                  const SizedBox(height: 15),
+                  CustomInput(
+                    controller: passCtrl,
+                    label: "Masukkan Sandi",
+                    icon: Icons.lock_outline,
+                    obscure: true,
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {},
+                      child: const Text(
+                        "Lupa Sandi ?",
+                        style: TextStyle(color: Colors.green),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1B5E20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            minimumSize: const Size(double.infinity, 50),
+                          ),
+                          onPressed: _login,
+                          child: const Text(
+                            "Masuk",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "Belum punya akun? ",
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RegisterScreen(),
+                          ),
+                        ),
+                        child: const Text(
+                          "Daftar sekarang",
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ],
+                ), // end Column (inside SingleChildScrollView)
+              ), // end SingleChildScrollView
+            ), // end Container
+          ), // end Positioned
+        ],
+      ), // end Stack
+    ); // end Scaffold
   }
 }
