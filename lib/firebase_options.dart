@@ -47,6 +47,7 @@ class DefaultFirebaseOptions {
     projectId: 'chaos-app-4dd51',
     authDomain: 'chaos-app-4dd51.firebaseapp.com',
     storageBucket: 'chaos-app-4dd51.firebasestorage.app',
+    
   );
 
   static const FirebaseOptions android = FirebaseOptions(
