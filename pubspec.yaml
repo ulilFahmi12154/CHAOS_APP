@@ -41,6 +41,7 @@ dependencies:
   firebase_database: ^10.4.0
   google_fonts: ^4.0.3
   app_links: ^3.4.5
+  image_picker: ^1.0.4
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +69,7 @@ flutter:
   assets:
     - assets/images/
     - assets/fonts/
+    - assets/ikon/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
