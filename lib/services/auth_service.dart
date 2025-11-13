@@ -43,6 +43,41 @@ class AuthService {
     }
   }
 
+  // 🔹 Reset password dengan ActionCodeSettings (redirect ke GitHub Pages)
+  Future<void> resetPassword(String email) async {
+    try {
+      final actionSettings = ActionCodeSettings(
+        url:
+            'https://jessicaamelia17.github.io/chaos-app-pages/reset.html',
+        handleCodeInApp: false,
+      );
+      await _auth.sendPasswordResetEmail(
+        email: email,
+        actionCodeSettings: actionSettings,
+      );
+    } on FirebaseAuthException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  // 🔹 Verifikasi kode reset password
+  Future<String> verifyPasswordResetCode(String code) async {
+    try {
+      return await _auth.verifyPasswordResetCode(code);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  // 🔹 Konfirmasi & ubah password menggunakan oobCode
+  Future<void> confirmPasswordReset(String code, String newPassword) async {
+    try {
+      await _auth.confirmPasswordReset(code: code, newPassword: newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
   // 🔹 Logout user
   Future<void> logout() async {
     await _auth.signOut();

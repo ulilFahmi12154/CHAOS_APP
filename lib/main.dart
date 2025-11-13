@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:app_links/app_links.dart'; // 🔹 Ganti dari uni_links
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -8,6 +11,9 @@ import 'screens/kontrol_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/reset_password_screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,14 +21,72 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late AppLinks _appLinks;
+  StreamSubscription? _deepLinkSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+void _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Handle initial link (cold start)
+    final Uri? uri = await _appLinks.getInitialAppLink();
+    if (uri != null) {
+      _handleDeepLink(uri);
+    }
+
+    // Listen untuk incoming links
+    _deepLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) {
+        _handleDeepLink(uri);
+      },
+      onError: (err) {
+        print('Deep link error: $err');
+      },
+    );
+  }
+
+
+  void _handleDeepLink(Uri uri) {
+    print('Deep link received: $uri');
+
+    if (uri.scheme == 'chaosapp' && uri.host == 'reset') {
+      final oobCode = uri.queryParameters['oobCode'];
+      if (oobCode != null) {
+        print('OOB Code: $oobCode');
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => ResetPasswordScreen(oobCode: oobCode),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'SmartFarm Chaos App',
+      navigatorKey: navigatorKey,
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.green,
