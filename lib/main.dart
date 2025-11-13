@@ -6,6 +6,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/kontrol_screen.dart';
+import 'screens/history_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -89,6 +94,13 @@ void _initDeepLinks() async {
         textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       home: const SplashScreen(),
+      routes: {
+        '/home': (context) => const HomeScreen(),
+        '/kontrol': (context) => const KontrolScreen(),
+        '/history': (context) => const HistoryScreen(),
+        '/settings': (context) => const SettingsScreen(),
+        '/profile': (context) => const ProfileScreen(),
+      },
     );
   }
 }
