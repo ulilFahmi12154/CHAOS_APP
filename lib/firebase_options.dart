@@ -55,6 +55,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '868981807041',
     projectId: 'chaos-app-4dd51',
     storageBucket: 'chaos-app-4dd51.firebasestorage.app',
+    databaseURL: 'https://chaos-app-4dd51-default-rtdb.firebaseio.com/',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
