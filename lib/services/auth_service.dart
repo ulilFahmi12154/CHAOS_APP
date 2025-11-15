@@ -47,8 +47,7 @@ class AuthService {
   Future<void> resetPassword(String email) async {
     try {
       final actionSettings = ActionCodeSettings(
-        url:
-            'https://jessicaamelia17.github.io/chaos-app-pages/reset.html',
+        url: 'https://jessicaamelia17.github.io/chaos-app-pages/reset.html',
         handleCodeInApp: false,
       );
       await _auth.sendPasswordResetEmail(
@@ -81,5 +80,27 @@ class AuthService {
   // 🔹 Logout user
   Future<void> logout() async {
     await _auth.signOut();
+  }
+
+  // 🔹 Ubah password
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('User tidak ditemukan');
+      }
+
+      // Reauthenticate user
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: oldPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // Update password
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(e.message);
+    }
   }
 }

@@ -162,7 +162,135 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-                  onTap: () {},
+                  onTap: () async {
+                    final oldPasswordController = TextEditingController();
+                    final newPasswordController = TextEditingController();
+                    final confirmPasswordController = TextEditingController();
+                    bool showOldPassword = false;
+                    bool showNewPassword = false;
+                    bool showConfirmPassword = false;
+
+                    final result = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => StatefulBuilder(
+                        builder: (context, setState) => AlertDialog(
+                          title: const Text('Ubah Kata Sandi'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextField(
+                                controller: oldPasswordController,
+                                obscureText: !showOldPassword,
+                                decoration: InputDecoration(
+                                  labelText: 'Kata Sandi Lama',
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      showOldPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        showOldPassword = !showOldPassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: newPasswordController,
+                                obscureText: !showNewPassword,
+                                decoration: InputDecoration(
+                                  labelText: 'Kata Sandi Baru',
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      showNewPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        showNewPassword = !showNewPassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: confirmPasswordController,
+                                obscureText: !showConfirmPassword,
+                                decoration: InputDecoration(
+                                  labelText: 'Konfirmasi Kata Sandi Baru',
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      showConfirmPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        showConfirmPassword =
+                                            !showConfirmPassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Batal'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Simpan'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    if (result == true) {
+                      final oldPassword = oldPasswordController.text.trim();
+                      final newPassword = newPasswordController.text.trim();
+                      final confirmPassword = confirmPasswordController.text
+                          .trim();
+
+                      if (newPassword != confirmPassword) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Kata sandi baru tidak cocok'),
+                          ),
+                        );
+                        return;
+                      }
+
+                      try {
+                        final authService = AuthService();
+                        await authService.changePassword(
+                          oldPassword,
+                          newPassword,
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Kata sandi berhasil diubah'),
+                          ),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Gagal mengubah kata sandi: ${e.toString()}',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 16),
