@@ -341,14 +341,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   : () async {
                                       // Daftar gambar profile (sertakan yang sedang dipakai)
                                       final List<String> profileImages = [
-                                        defaultProfile,
-                                        'assets/images/profile1.png',
-                                        'assets/images/profile2.png',
-                                        'assets/images/profile3.png',
+                                        'assets/images/air.png',
+                                        'assets/images/bupetani.png',
+                                        'assets/images/Cabai.png',
+                                        'assets/images/Matahari.png',
+                                        'assets/images/pakpetani.png',
+                                        'assets/images/Tanah.png',
+                                        'assets/images/Tunas.png',
+                                        'assets/images/Ulat.png',
                                       ];
+                                      // Jika foto sekarang bukan salah satu pilihan dan bukan default, tambahkan di awal
                                       // Jika foto sekarang bukan salah satu pilihan, tambahkan di awal
                                       final currentPhoto = photoUrl;
-                                      if (currentPhoto.isNotEmpty && !profileImages.contains(currentPhoto)) {
+                                      if (currentPhoto.isNotEmpty &&
+                                          !profileImages.contains(currentPhoto) &&
+                                          currentPhoto != defaultProfile) {
                                         profileImages.insert(0, currentPhoto);
                                       }
                                       final selected = await showDialog<String>(
