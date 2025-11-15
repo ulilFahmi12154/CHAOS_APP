@@ -18,7 +18,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } on FirebaseException catch (e) {
     if (e.code != 'duplicate-app') {
       rethrow;
@@ -44,7 +46,7 @@ class _MyAppState extends State<MyApp> {
     _initDeepLinks();
   }
 
-void _initDeepLinks() async {
+  void _initDeepLinks() async {
     _appLinks = AppLinks();
 
     // Handle initial link (cold start)
@@ -63,7 +65,6 @@ void _initDeepLinks() async {
       },
     );
   }
-
 
   void _handleDeepLink(Uri uri) {
     print('Deep link received: $uri');
@@ -106,6 +107,7 @@ void _initDeepLinks() async {
         '/history': (context) => const HistoryScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/welcome': (context) => const SplashScreen(),
       },
     );
   }
