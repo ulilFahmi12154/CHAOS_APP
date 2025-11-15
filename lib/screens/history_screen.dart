@@ -36,7 +36,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final snapshot = await _dbRef.child('dewata_f1').get();
+      // Try the most likely locations for the historical data. Some devices
+      // write under different root paths (e.g. `smartfarm/history/dewata_f1`).
+      var snapshot = await _dbRef.child('dewata_f1').get();
+      if (!snapshot.exists) {
+        final alt = await _dbRef
+            .child('smartfarm')
+            .child('history')
+            .child('dewata_f1')
+            .get();
+        if (alt.exists) snapshot = alt;
+      }
 
       if (snapshot.exists) {
         List<Map<String, dynamic>> tempData = [];
@@ -46,14 +56,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (dateValue is Map) {
             dateValue.forEach((timeKey, timeValue) {
               if (timeValue is Map) {
+                // Normalize values: timestamps from the device may be in
+                // seconds (10-digit) or milliseconds (13-digit). Also sensor
+                // values may be stored as strings — coerce to numbers.
+                int toMillis(dynamic ts) {
+                  if (ts == null) return 0;
+                  if (ts is int) {
+                    // seconds -> convert to ms
+                    if (ts < 100000000000) return ts * 1000;
+                    return ts;
+                  }
+                  if (ts is String) {
+                    final parsed = int.tryParse(ts);
+                    if (parsed != null) {
+                      if (parsed < 100000000000) return parsed * 1000;
+                      return parsed;
+                    }
+                  }
+                  if (ts is double) {
+                    final asInt = ts.toInt();
+                    if (asInt < 100000000000) return asInt * 1000;
+                    return asInt;
+                  }
+                  return 0;
+                }
+
+                double toDouble(dynamic v) {
+                  if (v == null) return 0.0;
+                  if (v is double) return v;
+                  if (v is int) return v.toDouble();
+                  if (v is String) return double.tryParse(v) ?? 0.0;
+                  return 0.0;
+                }
+
                 tempData.add({
                   'date': dateKey,
                   'timeKey': timeKey,
-                  'kelembaban_tanah': timeValue['kelembaban_tanah'] ?? 0,
-                  'suhu': timeValue['suhu'] ?? 0,
-                  'intensitas_cahaya': timeValue['intensitas_cahaya'] ?? 0,
-                  'kelembapan_udara': timeValue['kelembapan_udara'] ?? 0,
-                  'timestamp': timeValue['timestamp'] ?? 0,
+                  'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
+                  'suhu': toDouble(timeValue['suhu']),
+                  'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
+                  'kelembapan_udara': toDouble(
+                    timeValue['kelembapan_udara'] ??
+                        timeValue['kelembaban_udara'],
+                  ),
+                  'timestamp': toMillis(timeValue['timestamp']),
                 });
               }
             });
@@ -98,13 +144,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return _historyData.where((item) {
       int timestamp = item['timestamp'] as int;
       DateTime itemDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      return itemDate.isAfter(startDate);
+      // include items on or after startDate
+      return !itemDate.isBefore(startDate);
     }).toList();
   }
 
   void _calculateStats() {
-    List<Map<String, dynamic>> filteredData = _getFilteredData();
+    // Calculate stats based on the same values used by the chart.
+    // The chart groups points by hour and plots hourly averages; to keep
+    // statistics consistent with the visual, compute average/max/min from
+    // those hourly-averaged values. If no chart points exist, fall back to
+    // raw filtered data.
+    final spots = _getChartData();
 
+    if (spots.isNotEmpty) {
+      List<double> values = spots.map((s) => s.y).toList();
+      setState(() {
+        _average = values.reduce((a, b) => a + b) / values.length;
+        _max = values.reduce((a, b) => a > b ? a : b);
+        _min = values.reduce((a, b) => a < b ? a : b);
+      });
+      return;
+    }
+
+    // Fallback: use raw filtered samples (if any)
+    List<Map<String, dynamic>> filteredData = _getFilteredData();
     if (filteredData.isEmpty) {
       setState(() {
         _average = 0.0;
@@ -203,49 +267,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
           : SingleChildScrollView(
               child: Column(
                 children: [
-                  // Header with back button
-                  Container(
-                    color: const Color(0xFF2D5F40),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        const Spacer(),
-                        Image.asset(
-                          'assets/ikon/logo.png',
-                          height: 40,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Text(
-                              'CHAOS',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            );
-                          },
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.notifications_outlined,
-                            color: Colors.white,
-                          ),
-                          onPressed: () {},
-                        ),
-                      ],
-                    ),
-                  ),
-
                   const SizedBox(height: 20),
 
                   // Title
@@ -314,8 +335,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                       child: Column(
                         children: [
-                          // Chart
-                          SizedBox(height: 250, child: _buildChart()),
+                          // Chart (clipped to card radius so area fill doesn't overflow)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            clipBehavior: Clip.hardEdge,
+                            child: SizedBox(
+                              height: 250,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8.0,
+                                ),
+                                child: _buildChart(),
+                              ),
+                            ),
+                          ),
 
                           const SizedBox(height: 16),
 
@@ -436,13 +469,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
       );
     }
+    // choose left axis interval depending on selected data type
+    // for intensity and kelembapan tanah we use 1k steps; otherwise smaller steps
+    double leftInterval = (_selectedDataType == 2 || _selectedDataType == 0)
+        ? 1000
+        : 10;
+    double minY = 0;
 
     return LineChart(
       LineChartData(
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: 10,
+          horizontalInterval: leftInterval,
           getDrawingHorizontalLine: (value) {
             return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
           },
@@ -456,7 +495,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 40,
-              interval: 10,
+              interval: leftInterval,
               getTitlesWidget: (value, meta) {
                 return Text(
                   '${value.toInt()}',
@@ -491,7 +530,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         borderData: FlBorderData(show: false),
         minX: 0,
         maxX: 24,
-        minY: 0,
+        minY: minY,
         maxY: _getMaxYValue(),
         lineBarsData: [
           LineChartBarData(
@@ -543,7 +582,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       case 0:
         return 'Kelembaban (%)';
       case 1:
-        return 'Suhu (%)';
+        return 'Suhu (°C)';
       case 2:
         return 'Intensitas (%)';
       default:
@@ -552,13 +591,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   double _getMaxYValue() {
+    // For intensity, use fixed axis 0..10000 with steps of 1000
+    if (_selectedDataType == 2) {
+      return 10000;
+    }
+
+    // For kelembapan tanah use 0..5000 with steps of 1000
+    if (_selectedDataType == 0) {
+      return 5000;
+    }
+
+    // Default fixed ranges for other data types
     switch (_selectedDataType) {
-      case 0:
-        return 100; // Kelembaban Tanah
       case 1:
         return 50; // Suhu Udara
-      case 2:
-        return 400; // Intensitas Cahaya
       default:
         return 100;
     }
