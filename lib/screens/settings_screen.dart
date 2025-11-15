@@ -62,40 +62,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         style: TextStyle(color: Colors.grey, fontSize: 14),
                       ),
                       const SizedBox(height: 12),
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Slider(
-                            value: kelembapan,
-                            min: 0,
-                            max: 100,
-                            divisions: 100,
-                            label: '${kelembapan.round()}%',
-                            onChanged: (v) {
-                              setState(() => kelembapan = v);
-                            },
+                      Slider(
+                        value: kelembapan,
+                        min: 0,
+                        max: 100,
+                        divisions: 100,
+                        label: '${kelembapan.round()}%',
+                        onChanged: (v) {
+                          setState(() => kelembapan = v);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${kelembapan.round()}%',
+                          style: const TextStyle(
+                            color: Color(0xFF234D2B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
-                          Positioned(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF234D2B),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${kelembapan.round()}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
