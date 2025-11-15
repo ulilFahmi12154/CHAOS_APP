@@ -29,21 +29,27 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           activeVarietas = event.snapshot.value.toString();
         });
+      } else {
+        setState(() {
+          activeVarietas = null;
+        });
       }
     });
   }
 
   Stream<List<Map<String, dynamic>>> getWarningStream() {
-    final db = FirebaseDatabase.instance.ref(
-      'smartfarm/warning/$activeVarietas',
-    );
+    final path = activeVarietas != null && activeVarietas!.isNotEmpty
+        ? 'smartfarm/warning/$activeVarietas'
+        : 'smartfarm/warning/default';
+
+    final db = FirebaseDatabase.instance.ref(path);
     return db.onValue.map((event) {
       final data = event.snapshot.value;
       if (data is Map) {
         return data.values
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList()
-            .take(3) // Tampilkan hanya 3 warning terbaru
+            .take(3)
             .toList();
       }
       return [];
@@ -51,9 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _togglePompa(bool state) async {
+    final varietasToUse = activeVarietas ?? 'default';
     final db = FirebaseDatabase.instance.ref();
     await db
-        .child('smartfarm/commands/relay_$activeVarietas')
+        .child('smartfarm/commands/relay_$varietasToUse')
         .set(state ? 1 : 0);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Pompa ${state ? 'Dinyalakan' : 'Dimatikan'}')),
@@ -62,29 +69,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
+
     return AppScaffold(
       currentIndex: 2,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Header dengan Salam & Varietas Aktif
-            _buildHeaderCard(),
+            _buildHeaderCard(context),
             const SizedBox(height: 16),
-
-            // Kontrol Sistem Irigasi Card
+            if (belumPilih)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.orange.shade700,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Dashboard Default',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            'Pilih varietas untuk data real-time',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
             _buildIrigasiCard(),
             const SizedBox(height: 16),
-
-            // Peringatan Real-time dari ESP32
             _buildWarningNotif(),
             const SizedBox(height: 16),
-
-            // Sensor Data Cards dengan Gauge
             _buildSensorGrid(),
             const SizedBox(height: 16),
-
-            // Rekomendasi
             _buildRecommendationRow(),
           ],
         ),
@@ -92,7 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-Widget _buildHeaderCard() {
+  Widget _buildHeaderCard(BuildContext context) {
+    final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -130,52 +173,111 @@ Widget _buildHeaderCard() {
             ),
           ),
           const SizedBox(height: 8),
+          if (belumPilih)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.white.withOpacity(0.8),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Belum ada varietas yang dipilih',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      activeVarietas!.replaceAll('_', ' ').toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    activeVarietas?.replaceAll('_', ' ').toUpperCase() ??
-                        'Belum dipilih',
-                    style: const TextStyle(
-                      fontSize: 14,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/settings');
+                  },
+                  icon: Icon(belumPilih ? Icons.add : Icons.edit),
+                  label: Text(belumPilih ? 'Pilih Varietas' : 'Ubah'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    ),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/profile');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.green,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              if (!belumPilih) ...[
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _showDeleteConfirmation(context);
+                  },
+                  icon: const Icon(Icons.delete, size: 16),
+                  label: const Text('Hapus'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade400,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
-                child: const Text('Lihat Detail'),
-              ),
+              ],
             ],
           ),
         ],
@@ -183,7 +285,60 @@ Widget _buildHeaderCard() {
     );
   }
 
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Hapus Varietas'),
+          content: const Text(
+            'Apakah Anda yakin ingin menghapus varietas yang sedang dimonitor?\n\n'
+            'Dashboard akan menampilkan data default.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () {
+                _deleteActiveVarietas();
+                Navigator.pop(context);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteActiveVarietas() async {
+    try {
+      final db = FirebaseDatabase.instance.ref();
+      await db.child('smartfarm/active_varietas').remove();
+
+      setState(() {
+        activeVarietas = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Varietas berhasil dihapus'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Widget _buildIrigasiCard() {
+    final varietasToUse = activeVarietas ?? 'default';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -207,7 +362,7 @@ Widget _buildHeaderCard() {
           const SizedBox(height: 12),
           StreamBuilder<dynamic>(
             stream: FirebaseDatabase.instance
-                .ref('smartfarm/sensors/$activeVarietas/pompa')
+                .ref('smartfarm/sensors/$varietasToUse/pompa')
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {
@@ -282,10 +437,7 @@ Widget _buildHeaderCard() {
                   children: [
                     isAuto
                         ? Icon(Icons.auto_mode, color: Colors.blue)
-                        : Icon(
-                            Icons.touch_app,
-                            color: Colors.orange,
-                          ), // Ganti hand_up
+                        : Icon(Icons.touch_app, color: Colors.orange),
                     const SizedBox(width: 8),
                     Text(
                       'Mode: ${isAuto ? "Otomatis" : "Manual"}',
@@ -404,6 +556,8 @@ Widget _buildHeaderCard() {
   }
 
   Widget _buildSensorGrid() {
+    final varietasToUse = activeVarietas ?? 'default';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -419,7 +573,7 @@ Widget _buildHeaderCard() {
                 'Suhu Udara',
                 Icons.thermostat,
                 Colors.orange,
-                _dbService.suhuStream(activeVarietas ?? 'dewata_f1'),
+                _dbService.suhuStream(varietasToUse),
                 '°C',
                 25,
                 30,
@@ -431,7 +585,7 @@ Widget _buildHeaderCard() {
                 'Kelembapan Udara',
                 Icons.opacity,
                 Colors.blue,
-                _dbService.kelembapanUdaraStream(activeVarietas ?? 'dewata_f1'),
+                _dbService.kelembapanUdaraStream(varietasToUse),
                 '%',
                 40,
                 80,
@@ -447,7 +601,7 @@ Widget _buildHeaderCard() {
                 'Kelembapan Tanah',
                 Icons.water_drop,
                 Colors.green,
-                _dbService.kelembapanTanahStream(activeVarietas ?? 'dewata_f1'),
+                _dbService.kelembapanTanahStream(varietasToUse),
                 'ADC',
                 1200,
                 2000,
@@ -459,7 +613,7 @@ Widget _buildHeaderCard() {
                 'Intensitas Cahaya',
                 Icons.light_mode,
                 Colors.yellow.shade700,
-                _dbService.cahayaStream(activeVarietas ?? 'dewata_f1'), 
+                _dbService.cahayaStream(varietasToUse),
                 'Lux',
                 2000,
                 4095,
@@ -549,12 +703,12 @@ Widget _buildHeaderCard() {
     );
   }
 
-Widget _buildRecommendationRow() {
+  Widget _buildRecommendationRow() {
     return Row(
       children: [
         Expanded(
           child: _buildRecommendationCard(
-            context, // ← Tambahkan ini!
+            context,
             'Rekomendasi\nPupuk',
             Icons.eco,
             Colors.green,
@@ -563,7 +717,7 @@ Widget _buildRecommendationRow() {
         const SizedBox(width: 12),
         Expanded(
           child: _buildRecommendationCard(
-            context, // ← Tambahkan ini!
+            context,
             'Kenali\nTanamanmu',
             Icons.local_florist,
             Colors.red.shade700,
@@ -573,7 +727,7 @@ Widget _buildRecommendationRow() {
     );
   }
 
-Widget _buildRecommendationCard(
+  Widget _buildRecommendationCard(
     BuildContext context,
     String title,
     IconData icon,
