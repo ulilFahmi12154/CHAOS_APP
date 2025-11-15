@@ -196,22 +196,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   onTap: () async {
-                    try {
-                      final authService = AuthService();
-                      await authService.logout();
-                      if (mounted) {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/welcome',
-                          (route) => false,
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Konfirmasi'),
+                        content: const Text(
+                          'Apakah Anda yakin ingin keluar dari akun?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Batal'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Ya, Keluar'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      try {
+                        final authService = AuthService();
+                        await authService.logout();
+                        if (mounted) {
+                          Navigator.pushNamedAndRemoveUntil(
+                            context,
+                            '/welcome',
+                            (route) => false,
+                          );
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Gagal keluar: ${e.toString()}'),
+                          ),
                         );
                       }
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Gagal keluar: ${e.toString()}'),
-                        ),
-                      );
                     }
                   },
                 ),
