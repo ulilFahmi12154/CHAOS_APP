@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/app_scaffold.dart';
+import '../../services/auth_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -194,7 +195,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  onTap: () {},
+                  onTap: () async {
+                    try {
+                      final authService = AuthService();
+                      await authService.logout();
+                      if (mounted) {
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          '/welcome',
+                          (route) => false,
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal keluar: ${e.toString()}'),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 32),
