@@ -271,9 +271,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // FIX membaca url dengan benar
                 // Default profile image
                 final defaultProfile = 'assets/images/profile.png';
-                final photoUrl = (_photoUrl ?? data['photoUrl'])?.isNotEmpty == true
-                  ? (_photoUrl ?? data['photoUrl'])
-                  : defaultProfile;
+                // Jika belum pernah memilih foto, gunakan gambar petani sebagai default
+                String photoUrl = (_photoUrl ?? data['photoUrl']) ?? '';
+                if (photoUrl.isEmpty) {
+                  photoUrl = defaultProfile;
+                }
 
                 return SingleChildScrollView(
                   child: Column(
@@ -327,9 +329,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     child: CircleAvatar(
                                       radius: 60,
                                       backgroundColor: const Color(0xFFE0E0E0),
-                                      backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
-                                          ? NetworkImage(photoUrl)
-                                          : const AssetImage('assets/images/profile.png') as ImageProvider,
+                                        backgroundImage: photoUrl.startsWith('assets/')
+                                          ? AssetImage(photoUrl)
+                                          : NetworkImage(photoUrl) as ImageProvider,
                                     ),
                                   ),
                             const SizedBox(height: 8),
@@ -346,9 +348,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ];
                                       // Jika foto sekarang bukan salah satu pilihan, tambahkan di awal
                                       final currentPhoto = photoUrl;
-                                      if (currentPhoto != null &&
-                                          currentPhoto.isNotEmpty &&
-                                          !profileImages.contains(currentPhoto)) {
+                                      if (currentPhoto.isNotEmpty && !profileImages.contains(currentPhoto)) {
                                         profileImages.insert(0, currentPhoto);
                                       }
                                       final selected = await showDialog<String>(
