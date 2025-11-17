@@ -43,6 +43,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final double luxMin = 19000, luxMax = 55000;
   double intensitasCahaya = 22000;
 
+  // Asset icon paths to verify and precache
+  final List<String> _iconAssets = [
+    'assets/ikon/cabai.png',
+    'assets/ikon/material-symbols_air.png',
+    'assets/ikon/game-icons_land-mine.png',
+    'assets/ikon/cahaya.png',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Try to precache icon assets after first frame to surface any missing asset errors early
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      for (final path in _iconAssets) {
+        try {
+          await precacheImage(AssetImage(path), context);
+          // ignore: avoid_print
+          print('Precache OK: $path');
+        } catch (e) {
+          // ignore: avoid_print
+          print('Precache FAILED for $path -> $e');
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -77,9 +103,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(
-                            Icons.local_fire_department,
-                            color: Color(0xFF234D2B),
+                          Image.asset(
+                            'assets/ikon/cabai.png',
+                            width: 20,
+                            height: 20,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.local_fire_department,
+                                  color: Color(0xFF234D2B),
+                                  size: 20,
+                                ),
                           ),
                           const SizedBox(width: 8),
                           const Text(
@@ -192,7 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       // Suhu
                       _SliderIndicator(
-                        icon: Icons.thermostat_outlined,
+                        icon: const Icon(
+                          Icons.thermostat_outlined,
+                          color: Color(0xFF234D2B),
+                        ),
                         label: 'Suhu',
                         minLabel: '${suhuMin.toStringAsFixed(0)}°C',
                         maxLabel: '${suhuMax.toStringAsFixed(0)}°C',
@@ -207,7 +244,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       // Kelembapan Udara
                       _SliderIndicator(
-                        icon: Icons.water_drop_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/material-symbols_air.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.water_drop_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'Kelembapan Udara',
                         minLabel: '${humMin.toStringAsFixed(0)}%',
                         maxLabel: '${humMax.toStringAsFixed(0)}%',
@@ -222,7 +270,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       // pH Tanah
                       _SliderIndicator(
-                        icon: Icons.grass_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/game-icons_land-mine.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.grass_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'pH Tanah',
                         minLabel: phMin.toStringAsFixed(1),
                         maxLabel: phMax.toStringAsFixed(1),
@@ -237,7 +296,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       // Intensitas Cahaya
                       _SliderIndicator(
-                        icon: Icons.wb_sunny_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/cahaya.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.wb_sunny_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'Intensitas Cahaya',
                         minLabel: '${_formatNumber(luxMin)} lux',
                         maxLabel: '${_formatNumber(luxMax)} lux',
@@ -620,7 +690,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Versi interaktif: slider tipis + label nilai + min/max
   Widget _SliderIndicator({
-    required IconData icon,
+    required Widget icon,
     required String label,
     required String minLabel,
     required String maxLabel,
@@ -636,7 +706,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: const Color(0xFF234D2B)),
+            SizedBox(width: 24, height: 24, child: icon),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
