@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -28,6 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool notifKritis = true;
   // notifSiklus used for pump on/off notifications
   bool notifSiklus = true;
+
+  // Stream subscription untuk real-time updates
+  StreamSubscription<Map<String, dynamic>?>? _settingsSubscription;
 
   // Nilai ambang (editable via slider) - akan di-update dari Firestore
   double suhuMin = 22, suhuMax = 28;
@@ -171,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Load settings dari Firebase
+  /// Load settings dari Firebase dan setup real-time listener
   Future<void> _loadUserSettings() async {
     try {
       // Get current user
@@ -183,7 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       _userId = user.uid;
 
-      // Load settings dari Firebase
+      // Load settings dari Firebase (one-time untuk initial load)
       final settings = await _dbService.getUserSettings(_userId!);
 
       if (settings != null && mounted) {
@@ -232,16 +236,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
         print('  Kelembapan: $kelembapanUdara (range: $humMin - $humMax)');
         print('  pH: $phTanah (range: $phMin - $phMax)');
         print('  Cahaya: $intensitasCahaya (range: $luxMin - $luxMax)');
+
+        // Setup real-time listener untuk notifikasi
+        _setupRealtimeListener();
       } else {
         // Jika belum ada settings, buat default settings
         await _saveDefaultSettings();
         setState(() => _isLoading = false);
+
+        // Setup listener setelah save default
+        _setupRealtimeListener();
       }
     } catch (e) {
       // ignore: avoid_print
       print('Error loading settings: $e');
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Setup real-time listener untuk Firebase Realtime Database
+  void _setupRealtimeListener() {
+    if (_userId == null) return;
+
+    // Cancel existing subscription jika ada
+    _settingsSubscription?.cancel();
+
+    // Listen to changes in real-time
+    _settingsSubscription = _dbService
+        .userSettingsStream(_userId!)
+        .listen(
+          (settings) {
+            if (settings == null || !mounted) return;
+
+            // Update notifikasi settings secara real-time
+            final notifikasi = settings['notifikasi'] as Map<dynamic, dynamic>?;
+            if (notifikasi != null) {
+              setState(() {
+                notifEnabled = notifikasi['enabled'] ?? true;
+                notifSiklus = notifikasi['pompa_irigasi'] ?? true;
+                notifKritis = notifikasi['tanaman_kritis'] ?? true;
+              });
+
+              print('Real-time update - Notifikasi:');
+              print('  Enabled: $notifEnabled');
+              print('  Pompa: $notifSiklus');
+              print('  Kritis: $notifKritis');
+            }
+          },
+          onError: (error) {
+            print('Error in settings stream: $error');
+          },
+        );
+  }
+
+  @override
+  void dispose() {
+    // Cancel subscription saat widget di-dispose
+    _settingsSubscription?.cancel();
+    super.dispose();
   }
 
   /// Simpan default settings ke Firebase
