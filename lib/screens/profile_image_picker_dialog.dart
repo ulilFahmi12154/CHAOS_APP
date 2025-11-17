@@ -50,9 +50,15 @@ class _ProfileImagePickerDialogState extends State<ProfileImagePickerDialog> {
                     children: widget.profileImages.map((img) {
                       final isSelected = (selectedPhoto == img);
                       final isCurrent = (widget.currentPhoto == img);
-                      String label = '';
-                      if (img == widget.defaultProfile) label = 'Petani';
-                      // Tambahkan label lain di sini jika gambar baru sudah ada
+                      // Ambil nama file tanpa path dan ekstensi, kapitalisasi huruf pertama
+                      String label = img.split('/').last.split('.').first;
+                      if (label == 'bupetani') {
+                        label = 'Bu Tani';
+                      } else if (label == 'pakpetani') {
+                        label = 'Pak Tani';
+                      } else if (label.isNotEmpty) {
+                        label = label[0].toUpperCase() + label.substring(1);
+                      }
                       return Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: GestureDetector(
