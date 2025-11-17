@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:app_links/app_links.dart'; // 🔹 Ganti dari uni_links
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -12,6 +11,8 @@ import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'screens/intro_slides_screen.dart';
+import 'screens/welcome_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -107,7 +108,8 @@ class _MyAppState extends State<MyApp> {
         '/history': (context) => const HistoryScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/profile': (context) => const ProfileScreen(),
-        '/welcome': (context) => const SplashScreen(),
+        '/intro': (context) => const IntroSlidesScreen(),
+        '/welcome': (context) => const WelcomeScreen(),
       },
     );
   }

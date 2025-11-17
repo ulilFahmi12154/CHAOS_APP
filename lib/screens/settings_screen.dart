@@ -10,12 +10,38 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Key to anchor the custom dropdown menu right under the field
+  final GlobalKey _varietasFieldKey = GlobalKey();
+  // Dropdown varietas
+  final List<String> _varietasList = const [
+    'Dewata F1',
+    'CRV 211',
+    'Patra 3',
+    'Mhanu XR',
+    'Wartavi',
+    'Bara',
+    'Juwiring',
+  ];
+  String _selectedVarietas = 'Patra 3';
+
+  // Notifikasi
   bool notifEnabled = true;
   bool notifKritis = true;
   bool notifSiklus = true;
-  bool notifKelembapan = false;
-  bool notifSuhu = false;
-  double kelembapan = 45;
+  bool notifSuhuAmbang = true;
+  bool notifKelembapanUdaraAmbang = true;
+  bool notifPhAmbang = true;
+  bool notifCahayaAmbang = true;
+
+  // Nilai ambang (editable via slider)
+  final double suhuMin = 22, suhuMax = 28;
+  double suhu = 24;
+  final double humMin = 50, humMax = 58;
+  double kelembapanUdara = 53;
+  final double phMin = 5.8, phMax = 6.5;
+  double phTanah = 6.0;
+  final double luxMin = 19000, luxMax = 55000;
+  double intensitasCahaya = 22000;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              // Otomasi irigasi
+              // Varietas yang ditanam saat ini
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -49,40 +75,177 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Otomasi irigasi',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Ambang batas kelembaban otomatis',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                      const SizedBox(height: 12),
-                      Slider(
-                        value: kelembapan,
-                        min: 0,
-                        max: 100,
-                        divisions: 100,
-                        label: '${kelembapan.round()}%',
-                        onChanged: (v) {
-                          setState(() => kelembapan = v);
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '${kelembapan.round()}%',
-                          style: const TextStyle(
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department,
                             color: Color(0xFF234D2B),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Varietas yang ditanam saat ini',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      InkWell(
+                        key: _varietasFieldKey,
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          final selected = await _showVarietasMenu(context);
+                          if (selected != null) {
+                            setState(() => _selectedVarietas = selected);
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: const Color(0xFF2D5F40),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide.none,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide.none,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _selectedVarietas,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down,
+                                color: Colors.white,
+                              ),
+                            ],
                           ),
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Ambang Batas Optimal
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Ambang Batas Optimal',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFF2E7D32),
+                              ),
+                            ),
+                            child: Text(
+                              _selectedVarietas,
+                              style: const TextStyle(
+                                color: Color(0xFF2E7D32),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Suhu
+                      _SliderIndicator(
+                        icon: Icons.thermostat_outlined,
+                        label: 'Suhu',
+                        minLabel: '${suhuMin.toStringAsFixed(0)}°C',
+                        maxLabel: '${suhuMax.toStringAsFixed(0)}°C',
+                        min: suhuMin,
+                        max: suhuMax,
+                        value: suhu,
+                        valueLabel: '${suhu.toStringAsFixed(0)}°C',
+                        onChanged: (v) => setState(() => suhu = v),
+                        divisions: (suhuMax - suhuMin).toInt(),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Kelembapan Udara
+                      _SliderIndicator(
+                        icon: Icons.water_drop_outlined,
+                        label: 'Kelembapan Udara',
+                        minLabel: '${humMin.toStringAsFixed(0)}%',
+                        maxLabel: '${humMax.toStringAsFixed(0)}%',
+                        min: humMin,
+                        max: humMax,
+                        value: kelembapanUdara,
+                        valueLabel: '${kelembapanUdara.toStringAsFixed(0)}%',
+                        onChanged: (v) => setState(() => kelembapanUdara = v),
+                        divisions: (humMax - humMin).toInt(),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // pH Tanah
+                      _SliderIndicator(
+                        icon: Icons.grass_outlined,
+                        label: 'pH Tanah',
+                        minLabel: phMin.toStringAsFixed(1),
+                        maxLabel: phMax.toStringAsFixed(1),
+                        min: phMin,
+                        max: phMax,
+                        value: phTanah,
+                        valueLabel: phTanah.toStringAsFixed(1),
+                        onChanged: (v) => setState(() => phTanah = v),
+                        divisions: 7, // ~0.1 step
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Intensitas Cahaya
+                      _SliderIndicator(
+                        icon: Icons.wb_sunny_outlined,
+                        label: 'Intensitas Cahaya',
+                        minLabel: '${_formatNumber(luxMin)} lux',
+                        maxLabel: '${_formatNumber(luxMax)} lux',
+                        min: luxMin,
+                        max: luxMax,
+                        value: intensitasCahaya,
+                        valueLabel: _formatNumber(intensitasCahaya),
+                        onChanged: (v) => setState(() => intensitasCahaya = v),
                       ),
                     ],
                   ),
@@ -100,15 +263,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Text(
+                        'Notifikasi',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
                             'Aktifkan notifikasi aplikasi',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                           Switch(
                             value: notifEnabled,
@@ -120,7 +288,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _notifTile(
                         'Notifikasi kondisi tanaman kritis',
                         notifKritis,
@@ -131,15 +299,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         notifSiklus,
                         (v) => setState(() => notifSiklus = v ?? false),
                       ),
+                      const SizedBox(height: 8),
+                      // Tambahan: Notifikasi ambang batas per-metrik
                       _notifTile(
-                        'Notifikasi perubahan Kelembapan drastis',
-                        notifKelembapan,
-                        (v) => setState(() => notifKelembapan = v ?? false),
+                        'Notifikasi Suhu Mencapai Ambang Batas',
+                        notifSuhuAmbang,
+                        (v) => setState(() => notifSuhuAmbang = v ?? false),
                       ),
                       _notifTile(
-                        'Notifikasi perubahan suhu drastis',
-                        notifSuhu,
-                        (v) => setState(() => notifSuhu = v ?? false),
+                        'Notifikasi Kelembapan Udara Mencapai Ambang Batas',
+                        notifKelembapanUdaraAmbang,
+                        (v) => setState(
+                          () => notifKelembapanUdaraAmbang = v ?? false,
+                        ),
+                      ),
+                      _notifTile(
+                        'Notifikasi pH Tanah Mencapai Ambang Batas',
+                        notifPhAmbang,
+                        (v) => setState(() => notifPhAmbang = v ?? false),
+                      ),
+                      _notifTile(
+                        'Notifikasi Intensitas Cahaya Mencapai Ambang Batas',
+                        notifCahayaAmbang,
+                        (v) => setState(() => notifCahayaAmbang = v ?? false),
                       ),
                     ],
                   ),
@@ -360,6 +542,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<String?> _showVarietasMenu(BuildContext context) async {
+    final RenderBox button =
+        _varietasFieldKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final Offset buttonTopLeft = button.localToGlobal(
+      Offset.zero,
+      ancestor: overlay,
+    );
+    final Offset buttonBottomLeft = button.localToGlobal(
+      Offset(0, button.size.height),
+      ancestor: overlay,
+    );
+
+    // Position the menu right under the field
+    final RelativeRect position = RelativeRect.fromLTRB(
+      buttonBottomLeft.dx,
+      buttonBottomLeft.dy,
+      overlay.size.width - buttonTopLeft.dx - button.size.width,
+      overlay.size.height - buttonBottomLeft.dy,
+    );
+
+    // Ensure non-transparent popup background with rounded corners
+    final result = await showMenu<String>(
+      context: context,
+      position: position,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.white,
+      items: _varietasList.map((v) {
+        final bool isSelected = v == _selectedVarietas;
+        return PopupMenuItem<String>(
+          value: v,
+          height: 48,
+          child: Container(
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFFB9B9B9) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Text(
+              v,
+              style: TextStyle(
+                color: isSelected ? Colors.black87 : const Color(0xFF2D5F40),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+
+    return result;
+  }
+
   Widget _notifTile(String text, bool value, ValueChanged<bool?> onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -378,5 +616,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  // Versi interaktif: slider tipis + label nilai + min/max
+  Widget _SliderIndicator({
+    required IconData icon,
+    required String label,
+    required String minLabel,
+    required String maxLabel,
+    required double min,
+    required double max,
+    required double value,
+    required String valueLabel,
+    required ValueChanged<double> onChanged,
+    int? divisions,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: const Color(0xFF234D2B)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                valueLabel,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            inactiveTrackColor: Colors.grey.shade300,
+            activeTrackColor: const Color(0xFF2E7D32),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+          ),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onChanged,
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(minLabel, style: const TextStyle(color: Colors.black54)),
+            Text(maxLabel, style: const TextStyle(color: Colors.black45)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _formatNumber(double v) {
+    if (v >= 1000) {
+      final k = (v / 1000).round();
+      return '${k}k';
+    }
+    return v.toStringAsFixed(0);
   }
 }
