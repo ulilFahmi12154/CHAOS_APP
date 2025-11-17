@@ -1,3 +1,4 @@
+import 'package:chaos_app/screens/plant_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -767,7 +768,20 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              Navigator.pushNamed(context, '/profile');
+              if (title.toLowerCase().contains('tanaman')) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PlantDetailScreen(
+                      title: 'Dewata F1',
+                      description: 'Dewata F1 adalah varietas cabai hibrida yang dikenal dengan produktivitasnya tinggi dan pertumbuhan tanaman yang kuat. Varietas ini sangat cocok ditanam di dataran rendah hingga menengah, toleran pada cuaca panas, dan menghasilkan buah merah merata dengan ketahanan hama penyakit yang baik.',
+                      imageUrl: '', // Ganti dengan url gambar jika ada
+                    ),
+                  ),
+                );
+              } else {
+                Navigator.pushNamed(context, '/profile');
+              }
             },
             child: const Text("Lihat Detail"),
             style: ElevatedButton.styleFrom(
