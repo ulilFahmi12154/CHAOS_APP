@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_scaffold.dart';
-import '../../services/auth_service.dart';
+import '../services/auth_service.dart';
+import '../services/realtime_db_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -10,41 +14,367 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Services
+  final RealtimeDbService _dbService = RealtimeDbService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   // Key to anchor the custom dropdown menu right under the field
   final GlobalKey _varietasFieldKey = GlobalKey();
-  // Dropdown varietas
-  final List<String> _varietasList = const [
-    'Dewata F1',
-    'CRV 211',
-    'Patra 3',
-    'Mhanu XR',
-    'Wartavi',
-    'Bara',
-    'Juwiring',
-  ];
-  String _selectedVarietas = 'Patra 3';
+  // Dropdown varietas - akan di-load dari Firestore
+  List<String> _varietasList = [];
+  String _selectedVarietas = 'patra_3';
 
   // Notifikasi
   bool notifEnabled = true;
   bool notifKritis = true;
+  // notifSiklus used for pump on/off notifications
   bool notifSiklus = true;
-  bool notifSuhuAmbang = true;
-  bool notifKelembapanUdaraAmbang = true;
-  bool notifPhAmbang = true;
-  bool notifCahayaAmbang = true;
 
-  // Nilai ambang (editable via slider)
-  final double suhuMin = 22, suhuMax = 28;
+  // Stream subscription untuk real-time updates
+  StreamSubscription<Map<String, dynamic>?>? _settingsSubscription;
+
+  // Nilai ambang (editable via slider) - akan di-update dari Firestore
+  double suhuMin = 22, suhuMax = 28;
   double suhu = 24;
-  final double humMin = 50, humMax = 58;
+  double humMin = 50, humMax = 58;
   double kelembapanUdara = 53;
-  final double phMin = 5.8, phMax = 6.5;
+  double phMin = 5.8, phMax = 6.5;
   double phTanah = 6.0;
-  final double luxMin = 19000, luxMax = 55000;
+  double luxMin = 19000, luxMax = 55000;
   double intensitasCahaya = 22000;
+
+  // Loading state
+  bool _isLoading = true;
+  String? _userId;
+
+  // Asset icon paths to verify and precache
+  final List<String> _iconAssets = [
+    'assets/ikon/cabai.png',
+    'assets/ikon/material-symbols_air.png',
+    'assets/ikon/game-icons_land-mine.png',
+    'assets/ikon/cahaya.png',
+  ];
+
+  /// Convert ID varietas (bara, patra_3) ke display name (Bara, Patra 3)
+  String _getVarietasDisplayName(String id) {
+    // Cari di list varietas yang sudah di-load dari Firestore
+    final match = _varietasList.firstWhere(
+      (v) => v.toLowerCase().replaceAll(' ', '_') == id.toLowerCase(),
+      orElse: () => id
+          .replaceAll('_', ' ')
+          .split(' ')
+          .map((word) => word[0].toUpperCase() + word.substring(1))
+          .join(' '),
+    );
+    return match;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeData();
+
+    // Try to precache icon assets after first frame to surface any missing asset errors early
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      for (final path in _iconAssets) {
+        try {
+          await precacheImage(AssetImage(path), context);
+          // ignore: avoid_print
+          print('Precache OK: $path');
+        } catch (e) {
+          // ignore: avoid_print
+          print('Precache FAILED for $path -> $e');
+        }
+      }
+    });
+  }
+
+  /// Initialize data: load varietas list dan user settings
+  Future<void> _initializeData() async {
+    await _loadVarietasList();
+    await _loadUserSettings();
+  }
+
+  /// Load list varietas dari Firestore
+  Future<void> _loadVarietasList() async {
+    try {
+      final snapshot = await _firestore.collection('varietas_config').get();
+      if (snapshot.docs.isNotEmpty && mounted) {
+        setState(() {
+          _varietasList = snapshot.docs
+              .map((doc) => doc['nama'] as String? ?? doc.id)
+              .toList();
+        });
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('Error loading varietas list: $e');
+    }
+  }
+
+  /// Load config varietas dari Firestore berdasarkan nama varietas
+  Future<void> _loadVarietasConfig(String varietasId) async {
+    try {
+      final doc = await _firestore
+          .collection('varietas_config')
+          .doc(varietasId)
+          .get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+
+        // Update range suhu
+        final newSuhuMin = (data['suhu_min'] ?? 22).toDouble();
+        final newSuhuMax = (data['suhu_max'] ?? 28).toDouble();
+
+        // Update range kelembapan udara
+        final newHumMin = (data['kelembapan_udara_min'] ?? 50).toDouble();
+        final newHumMax = (data['kelembapan_udara_max'] ?? 58).toDouble();
+
+        // Update range pH tanah - cek apakah ada field ph_min/ph_max di Firestore
+        // Jika tidak ada, gunakan nilai default yang sesuai untuk cabai
+        final newPhMin = (data['ph_min'] ?? 5.8).toDouble();
+        final newPhMax = (data['ph_max'] ?? 6.5).toDouble();
+
+        // Update range intensitas cahaya
+        final newLuxMin = (data['light_min'] ?? 1800).toDouble();
+        final newLuxMax = (data['light_max'] ?? 4095).toDouble();
+
+        setState(() {
+          // Set ranges baru
+          suhuMin = newSuhuMin;
+          suhuMax = newSuhuMax;
+          humMin = newHumMin;
+          humMax = newHumMax;
+          phMin = newPhMin;
+          phMax = newPhMax;
+          luxMin = newLuxMin;
+          luxMax = newLuxMax;
+
+          // Clamp nilai current agar dalam range baru
+          suhu = suhu.clamp(suhuMin, suhuMax);
+          kelembapanUdara = kelembapanUdara.clamp(humMin, humMax);
+          phTanah = phTanah.clamp(phMin, phMax);
+          intensitasCahaya = intensitasCahaya.clamp(luxMin, luxMax);
+        });
+
+        // ignore: avoid_print
+        print('Loaded config for $varietasId:');
+        // ignore: avoid_print
+        print('  Suhu: $suhuMin - $suhuMax (current: $suhu)');
+        // ignore: avoid_print
+        print('  Kelembapan: $humMin - $humMax (current: $kelembapanUdara)');
+        // ignore: avoid_print
+        print('  pH: $phMin - $phMax (current: $phTanah)');
+        // ignore: avoid_print
+        print('  Cahaya: $luxMin - $luxMax (current: $intensitasCahaya)');
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('Error loading varietas config: $e');
+    }
+  }
+
+  /// Load settings dari Firebase dan setup real-time listener
+  Future<void> _loadUserSettings() async {
+    try {
+      // Get current user
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _userId = user.uid;
+
+      // Load settings dari Firebase (one-time untuk initial load)
+      final settings = await _dbService.getUserSettings(_userId!);
+
+      if (settings != null && mounted) {
+        // Load varietas
+        _selectedVarietas = settings['varietas'] ?? 'patra_3';
+
+        // Load config varietas dari Firestore untuk mendapatkan min/max
+        await _loadVarietasConfig(_selectedVarietas);
+
+        setState(() {
+          // Load ambang batas
+          final ambangBatas =
+              settings['ambang_batas'] as Map<dynamic, dynamic>?;
+          if (ambangBatas != null) {
+            // Load values dan langsung clamp agar dalam range yang valid
+            suhu = (ambangBatas['suhu'] ?? 24).toDouble().clamp(
+              suhuMin,
+              suhuMax,
+            );
+            kelembapanUdara = (ambangBatas['kelembapan_udara'] ?? 53)
+                .toDouble()
+                .clamp(humMin, humMax);
+            phTanah = (ambangBatas['ph_tanah'] ?? 6.0).toDouble().clamp(
+              phMin,
+              phMax,
+            );
+            intensitasCahaya = (ambangBatas['intensitas_cahaya'] ?? 22000)
+                .toDouble()
+                .clamp(luxMin, luxMax);
+          }
+
+          // Load notifikasi settings
+          final notifikasi = settings['notifikasi'] as Map<dynamic, dynamic>?;
+          if (notifikasi != null) {
+            notifEnabled = notifikasi['enabled'] ?? true;
+            notifSiklus = notifikasi['pompa_irigasi'] ?? true;
+            notifKritis = notifikasi['tanaman_kritis'] ?? true;
+          }
+
+          _isLoading = false;
+        });
+
+        // Log untuk debugging
+        print('Loaded user settings:');
+        print('  Suhu: $suhu (range: $suhuMin - $suhuMax)');
+        print('  Kelembapan: $kelembapanUdara (range: $humMin - $humMax)');
+        print('  pH: $phTanah (range: $phMin - $phMax)');
+        print('  Cahaya: $intensitasCahaya (range: $luxMin - $luxMax)');
+
+        // Setup real-time listener untuk notifikasi
+        _setupRealtimeListener();
+      } else {
+        // Jika belum ada settings, buat default settings
+        await _saveDefaultSettings();
+        setState(() => _isLoading = false);
+
+        // Setup listener setelah save default
+        _setupRealtimeListener();
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('Error loading settings: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Setup real-time listener untuk Firebase Realtime Database
+  void _setupRealtimeListener() {
+    if (_userId == null) return;
+
+    // Cancel existing subscription jika ada
+    _settingsSubscription?.cancel();
+
+    // Listen to changes in real-time
+    _settingsSubscription = _dbService
+        .userSettingsStream(_userId!)
+        .listen(
+          (settings) {
+            if (settings == null || !mounted) return;
+
+            // Update notifikasi settings secara real-time
+            final notifikasi = settings['notifikasi'] as Map<dynamic, dynamic>?;
+            if (notifikasi != null) {
+              setState(() {
+                notifEnabled = notifikasi['enabled'] ?? true;
+                notifSiklus = notifikasi['pompa_irigasi'] ?? true;
+                notifKritis = notifikasi['tanaman_kritis'] ?? true;
+              });
+
+              print('Real-time update - Notifikasi:');
+              print('  Enabled: $notifEnabled');
+              print('  Pompa: $notifSiklus');
+              print('  Kritis: $notifKritis');
+            }
+          },
+          onError: (error) {
+            print('Error in settings stream: $error');
+          },
+        );
+  }
+
+  @override
+  void dispose() {
+    // Cancel subscription saat widget di-dispose
+    _settingsSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Simpan default settings ke Firebase
+  Future<void> _saveDefaultSettings() async {
+    if (_userId == null) return;
+
+    final defaultSettings = {
+      'varietas': _selectedVarietas,
+      'ambang_batas': {
+        'suhu': suhu,
+        'kelembapan_udara': kelembapanUdara,
+        'ph_tanah': phTanah,
+        'intensitas_cahaya': intensitasCahaya,
+      },
+      'notifikasi': {
+        'enabled': notifEnabled,
+        'pompa_irigasi': notifSiklus,
+        'tanaman_kritis': notifKritis,
+      },
+    };
+
+    await _dbService.updateAllSettings(_userId!, defaultSettings);
+  }
+
+  /// Update varietas ke Firebase
+  Future<void> _updateVarietas(String varietas) async {
+    if (_userId == null) return;
+    await _dbService.updateVarietas(_userId!, varietas);
+  }
+
+  /// Update ambang suhu ke Firebase
+  Future<void> _updateSuhu(double value) async {
+    if (_userId == null) return;
+    await _dbService.updateAmbangSuhu(_userId!, value);
+  }
+
+  /// Update ambang kelembapan udara ke Firebase
+  Future<void> _updateKelembapanUdara(double value) async {
+    if (_userId == null) return;
+    await _dbService.updateAmbangKelembapanUdara(_userId!, value);
+  }
+
+  /// Update ambang pH tanah ke Firebase
+  Future<void> _updatePhTanah(double value) async {
+    if (_userId == null) return;
+    await _dbService.updateAmbangPhTanah(_userId!, value);
+  }
+
+  /// Update ambang intensitas cahaya ke Firebase
+  Future<void> _updateIntensitasCahaya(double value) async {
+    if (_userId == null) return;
+    await _dbService.updateAmbangIntensitasCahaya(_userId!, value);
+  }
+
+  /// Update notifikasi enabled ke Firebase
+  Future<void> _updateNotifikasiEnabled(bool value) async {
+    if (_userId == null) return;
+    await _dbService.updateNotifikasiEnabled(_userId!, value);
+  }
+
+  /// Update notifikasi pompa ke Firebase
+  Future<void> _updateNotifikasiPompa(bool value) async {
+    if (_userId == null) return;
+    await _dbService.updateNotifikasiPompa(_userId!, value);
+  }
+
+  /// Update notifikasi kritis ke Firebase
+  Future<void> _updateNotifikasiKritis(bool value) async {
+    if (_userId == null) return;
+    await _dbService.updateNotifikasiKritis(_userId!, value);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+        ),
+      );
+    }
     return AppScaffold(
       currentIndex: 3,
       body: SingleChildScrollView(
@@ -77,9 +407,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(
-                            Icons.local_fire_department,
-                            color: Color(0xFF234D2B),
+                          Image.asset(
+                            'assets/ikon/cabai.png',
+                            width: 20,
+                            height: 20,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.local_fire_department,
+                                  color: Color(0xFF234D2B),
+                                  size: 20,
+                                ),
                           ),
                           const SizedBox(width: 8),
                           const Text(
@@ -98,7 +436,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onTap: () async {
                           final selected = await _showVarietasMenu(context);
                           if (selected != null) {
-                            setState(() => _selectedVarietas = selected);
+                            // Konversi nama varietas ke ID (lowercase dengan underscore)
+                            final varietasId = selected
+                                .toLowerCase()
+                                .replaceAll(' ', '_');
+
+                            // Load config varietas baru dari Firestore
+                            await _loadVarietasConfig(varietasId);
+
+                            setState(() => _selectedVarietas = varietasId);
+                            await _updateVarietas(varietasId);
                           }
                         },
                         child: InputDecorator(
@@ -123,7 +470,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  _selectedVarietas,
+                                  _getVarietasDisplayName(_selectedVarietas),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700,
@@ -179,7 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                             child: Text(
-                              _selectedVarietas,
+                              _getVarietasDisplayName(_selectedVarietas),
                               style: const TextStyle(
                                 color: Color(0xFF2E7D32),
                                 fontWeight: FontWeight.w600,
@@ -192,7 +539,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       // Suhu
                       _SliderIndicator(
-                        icon: Icons.thermostat_outlined,
+                        icon: const Icon(
+                          Icons.thermostat_outlined,
+                          color: Color(0xFF234D2B),
+                        ),
                         label: 'Suhu',
                         minLabel: '${suhuMin.toStringAsFixed(0)}°C',
                         maxLabel: '${suhuMax.toStringAsFixed(0)}°C',
@@ -200,14 +550,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         max: suhuMax,
                         value: suhu,
                         valueLabel: '${suhu.toStringAsFixed(0)}°C',
-                        onChanged: (v) => setState(() => suhu = v),
+                        onChanged: (v) {
+                          setState(() => suhu = v);
+                          _updateSuhu(v);
+                        },
                         divisions: (suhuMax - suhuMin).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // Kelembapan Udara
                       _SliderIndicator(
-                        icon: Icons.water_drop_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/material-symbols_air.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.water_drop_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'Kelembapan Udara',
                         minLabel: '${humMin.toStringAsFixed(0)}%',
                         maxLabel: '${humMax.toStringAsFixed(0)}%',
@@ -215,14 +579,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         max: humMax,
                         value: kelembapanUdara,
                         valueLabel: '${kelembapanUdara.toStringAsFixed(0)}%',
-                        onChanged: (v) => setState(() => kelembapanUdara = v),
+                        onChanged: (v) {
+                          setState(() => kelembapanUdara = v);
+                          _updateKelembapanUdara(v);
+                        },
                         divisions: (humMax - humMin).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // pH Tanah
                       _SliderIndicator(
-                        icon: Icons.grass_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/game-icons_land-mine.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.grass_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'pH Tanah',
                         minLabel: phMin.toStringAsFixed(1),
                         maxLabel: phMax.toStringAsFixed(1),
@@ -230,14 +608,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         max: phMax,
                         value: phTanah,
                         valueLabel: phTanah.toStringAsFixed(1),
-                        onChanged: (v) => setState(() => phTanah = v),
+                        onChanged: (v) {
+                          setState(() => phTanah = v);
+                          _updatePhTanah(v);
+                        },
                         divisions: 7, // ~0.1 step
                       ),
                       const SizedBox(height: 14),
 
                       // Intensitas Cahaya
                       _SliderIndicator(
-                        icon: Icons.wb_sunny_outlined,
+                        icon: Image.asset(
+                          'assets/ikon/cahaya.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.wb_sunny_outlined,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
                         label: 'Intensitas Cahaya',
                         minLabel: '${_formatNumber(luxMin)} lux',
                         maxLabel: '${_formatNumber(luxMax)} lux',
@@ -245,7 +637,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         max: luxMax,
                         value: intensitasCahaya,
                         valueLabel: _formatNumber(intensitasCahaya),
-                        onChanged: (v) => setState(() => intensitasCahaya = v),
+                        onChanged: (v) {
+                          setState(() => intensitasCahaya = v);
+                          _updateIntensitasCahaya(v);
+                        },
                       ),
                     ],
                   ),
@@ -284,45 +679,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             activeTrackColor: Colors.green,
                             onChanged: (v) {
                               setState(() => notifEnabled = v);
+                              _updateNotifikasiEnabled(v);
                             },
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
+                      // Keep only two notification options: Pump status and critical plant alerts
                       _notifTile(
-                        'Notifikasi kondisi tanaman kritis',
-                        notifKritis,
-                        (v) => setState(() => notifKritis = v ?? false),
-                      ),
-                      _notifTile(
-                        'Notifikasi siklus irigasi (pompa on/off)',
+                        'Notifikasi Status Pompa Irigasi',
                         notifSiklus,
-                        (v) => setState(() => notifSiklus = v ?? false),
+                        (v) {
+                          setState(() => notifSiklus = v ?? false);
+                          _updateNotifikasiPompa(v ?? false);
+                        },
                       ),
-                      const SizedBox(height: 8),
-                      // Tambahan: Notifikasi ambang batas per-metrik
-                      _notifTile(
-                        'Notifikasi Suhu Mencapai Ambang Batas',
-                        notifSuhuAmbang,
-                        (v) => setState(() => notifSuhuAmbang = v ?? false),
-                      ),
-                      _notifTile(
-                        'Notifikasi Kelembapan Udara Mencapai Ambang Batas',
-                        notifKelembapanUdaraAmbang,
-                        (v) => setState(
-                          () => notifKelembapanUdaraAmbang = v ?? false,
-                        ),
-                      ),
-                      _notifTile(
-                        'Notifikasi pH Tanah Mencapai Ambang Batas',
-                        notifPhAmbang,
-                        (v) => setState(() => notifPhAmbang = v ?? false),
-                      ),
-                      _notifTile(
-                        'Notifikasi Intensitas Cahaya Mencapai Ambang Batas',
-                        notifCahayaAmbang,
-                        (v) => setState(() => notifCahayaAmbang = v ?? false),
-                      ),
+                      _notifTile('Notifikasi Tanaman Kritis', notifKritis, (v) {
+                        setState(() => notifKritis = v ?? false);
+                        _updateNotifikasiKritis(v ?? false);
+                      }),
                     ],
                   ),
                 ),
@@ -495,21 +870,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () async {
                     final confirm = await showDialog<bool>(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Konfirmasi'),
-                        content: const Text(
-                          'Apakah Anda yakin ingin keluar dari akun?',
+                      barrierDismissible: false,
+                      builder: (context) => Dialog(
+                        backgroundColor: const Color(0xFF0B6623),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Batal'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 24,
                           ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Ya, Keluar'),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: 40,
+                              ),
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Anda yakin ingin keluar dari akun?',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16.5,
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text(
+                                    'Keluar',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFE5E5E5),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text(
+                                    'Kembali',
+                                    style: TextStyle(
+                                      color: Color(0xFF0B6623),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     );
                     if (confirm == true) {
@@ -620,7 +1063,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Versi interaktif: slider tipis + label nilai + min/max
   Widget _SliderIndicator({
-    required IconData icon,
+    required Widget icon,
     required String label,
     required String minLabel,
     required String maxLabel,
@@ -636,7 +1079,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: const Color(0xFF234D2B)),
+            SizedBox(width: 24, height: 24, child: icon),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
