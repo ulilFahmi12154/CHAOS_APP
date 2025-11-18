@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/app_scaffold.dart';
 
 class KontrolScreen extends StatefulWidget {
@@ -22,10 +23,17 @@ class _KontrolScreenState extends State<KontrolScreen> {
   }
 
   Future<void> _loadActiveVarietas() async {
-    db.child('smartfarm/active_varietas').onValue.listen((event) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    db.child('users/${user.uid}/active_varietas').onValue.listen((event) {
       if (event.snapshot.exists) {
         setState(() {
           activeVarietas = event.snapshot.value.toString();
+        });
+      } else {
+        setState(() {
+          activeVarietas = null;
         });
       }
     });
@@ -176,10 +184,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                 children: [
                   Text(
                     'Mode Otomatis',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 4),
                   Text(
@@ -189,7 +194,10 @@ class _KontrolScreenState extends State<KontrolScreen> {
                 ],
               ),
               StreamBuilder<dynamic>(
-                stream: db.child('smartfarm/mode_otomatis').onValue.map((e) => e.snapshot.value),
+                stream: db
+                    .child('smartfarm/mode_otomatis')
+                    .onValue
+                    .map((e) => e.snapshot.value),
                 builder: (context, snapshot) {
                   bool isAuto = snapshot.data == true;
                   return Switch(
@@ -267,14 +275,14 @@ class _KontrolScreenState extends State<KontrolScreen> {
         children: [
           const Text(
             'Kontrol Pompa',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
-            stream: db.child('smartfarm/mode_otomatis').onValue.map((e) => e.snapshot.value),
+            stream: db
+                .child('smartfarm/mode_otomatis')
+                .onValue
+                .map((e) => e.snapshot.value),
             builder: (context, modeSnapshot) {
               bool isAuto = modeSnapshot.data == true;
               return Column(
@@ -298,7 +306,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
                             return Column(
                               children: [
                                 Icon(
-                                  isOn ? Icons.water : Icons.water_drop_outlined,
+                                  isOn
+                                      ? Icons.water
+                                      : Icons.water_drop_outlined,
                                   size: 60,
                                   color: isOn ? Colors.green : Colors.grey,
                                 ),
@@ -336,14 +346,17 @@ class _KontrolScreenState extends State<KontrolScreen> {
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () { _togglePompa(true); },
+                                onPressed: () {
+                                  _togglePompa(true);
+                                },
                                 icon: const Icon(Icons.power),
                                 label: const Text('Nyalakan Pompa'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -353,14 +366,17 @@ class _KontrolScreenState extends State<KontrolScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () { _togglePompa(false); },
+                                onPressed: () {
+                                  _togglePompa(false);
+                                },
                                 icon: const Icon(Icons.power_off),
                                 label: const Text('Matikan Pompa'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -379,8 +395,11 @@ class _KontrolScreenState extends State<KontrolScreen> {
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.warning_amber,
-                                  color: Colors.orange, size: 20),
+                              Icon(
+                                Icons.warning_amber,
+                                color: Colors.orange,
+                                size: 20,
+                              ),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -429,7 +448,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
     );
   }
 
-
   Widget _buildThresholdSettingsCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -453,10 +471,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
               SizedBox(width: 8),
               Text(
                 'Pengaturan Ambang Batas',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -508,16 +523,16 @@ class _KontrolScreenState extends State<KontrolScreen> {
               SizedBox(width: 8),
               Text(
                 'Status Sistem',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
-            stream: db.child('smartfarm/mode_otomatis').onValue.map((e) => e.snapshot.value),
+            stream: db
+                .child('smartfarm/mode_otomatis')
+                .onValue
+                .map((e) => e.snapshot.value),
             builder: (context, snapshot) {
               bool isAuto = snapshot.data == true;
               return _buildStatusItem(
@@ -545,7 +560,8 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 12),
           _buildStatusItem(
             'Varietas Aktif',
-            activeVarietas?.replaceAll('_', ' ').toUpperCase() ?? 'Belum dipilih',
+            activeVarietas?.replaceAll('_', ' ').toUpperCase() ??
+                'Belum dipilih',
             Colors.purple,
           ),
         ],
@@ -566,10 +582,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           Text(
             value,
