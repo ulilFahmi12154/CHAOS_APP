@@ -404,8 +404,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: Icons.email,
                         title: "Email",
                         value: email,
-                        onEdit: () => _editProfileField('email', email, user.uid),
                         cardColor: Colors.white,
+                        showEdit: false,
                       ),
 
 
@@ -541,16 +541,18 @@ class _ProfileInfoCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
   final Color? cardColor;
+  final bool showEdit;
 
   const _ProfileInfoCard({
     Key? key,
     required this.icon,
     required this.title,
     required this.value,
-    required this.onEdit,
+    this.onEdit,
     this.cardColor,
+    this.showEdit = true,
   }) : super(key: key);
 
   @override
@@ -569,10 +571,12 @@ class _ProfileInfoCard extends StatelessWidget {
           ),
         ),
         subtitle: Text(value, style: const TextStyle(color: Colors.black87)),
-        trailing: IconButton(
-          icon: const Icon(Icons.edit, color: Color(0xFF0B6623)),
-          onPressed: onEdit,
-        ),
+        trailing: showEdit
+            ? IconButton(
+                icon: const Icon(Icons.edit, color: Color(0xFF0B6623)),
+                onPressed: onEdit,
+              )
+            : null,
       ),
     );
   }

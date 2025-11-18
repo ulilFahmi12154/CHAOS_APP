@@ -1,7 +1,8 @@
 import 'home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'welcome_screen.dart';
+// import 'welcome_screen.dart';
+import 'intro_slides_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -28,10 +29,10 @@ class _SplashScreenState extends State<SplashScreen> {
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } else {
-      // Jika belum login, arahkan ke WelcomeScreen yang menyediakan pilihan Login/Register
+      // Jika belum login, tampilkan intro slides terlebih dahulu
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        MaterialPageRoute(builder: (_) => const IntroSlidesScreen()),
       );
     }
   }
@@ -56,11 +57,8 @@ class _SplashScreenState extends State<SplashScreen> {
                   height: 250,
                   fit: BoxFit.contain,
                   // If asset missing, show a simple placeholder icon so app doesn't crash
-                  errorBuilder: (context, error, stackTrace) => const Icon(
-                    Icons.eco,
-                    size: 200,
-                    color: Colors.green,
-                  ),
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.eco, size: 200, color: Colors.green),
                 ),
               ],
             ),
