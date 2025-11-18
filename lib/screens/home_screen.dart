@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
+import 'package:chaos_app/screens/plant_detail_screen.dart';
+  
+
 
   Widget _buildSensorCard(
     String title,
@@ -239,6 +243,286 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // Widget baru untuk pemilihan varietas dari Firestore
+  Widget _buildVarietasPicker() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('varietas_config')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Text(
+              'Tidak ada varietas tersedia',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        // Ambil list varietas dari Firestore
+        final varietasList = snapshot.data!.docs
+            .map((doc) => doc.id) // Gunakan document ID sebagai nama varietas
+            .toList();
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.science, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Pilih Varietas (Percobaan)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Ganti varietas secara cepat untuk testing',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: varietasList.contains(activeVarietas)
+                      ? activeVarietas
+                      : null,
+                  hint: const Text('Pilih varietas untuk testing...'),
+                  isExpanded: true,
+                  onChanged: (String? newValue) async {
+                    if (newValue != null) {
+                      try {
+                        // Tampilkan loading indicator
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Mengubah varietas & sync config...'),
+                              ],
+                            ),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+
+                        // 1. Ambil data config dari Firestore
+                        final docSnapshot = await FirebaseFirestore.instance
+                            .collection('varietas_config')
+                            .doc(newValue)
+                            .get();
+
+                        if (!docSnapshot.exists) {
+                          throw Exception(
+                            'Data varietas tidak ditemukan di Firestore',
+                          );
+                        }
+
+                        final data = docSnapshot.data()!;
+
+                        // 2. Sync config ke Realtime Database (untuk ESP32)
+                        await FirebaseDatabase.instance
+                            .ref('smartfarm/varietas_config/$newValue')
+                            .set({
+                              'soil_min': data['soil_min'] ?? 0,
+                              'soil_max': data['soil_max'] ?? 4095,
+                              'suhu_min': data['suhu_min'] ?? 0,
+                              'suhu_max': data['suhu_max'] ?? 100,
+                              'kelembapan_udara_min':
+                                  data['kelembapan_udara_min'] ?? 0,
+                              'kelembapan_udara_max':
+                                  data['kelembapan_udara_max'] ?? 100,
+                              'light_min': data['light_min'] ?? 0,
+                              'light_max': data['light_max'] ?? 4095,
+                              'nama': data['nama'] ?? newValue,
+                            });
+
+                        // 3. Simpan pilihan ke profile user
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) throw Exception('User tidak login');
+
+                        await FirebaseDatabase.instance
+                            .ref('users/${user.uid}/active_varietas')
+                            .set(newValue);
+
+                        // 4. Sync juga ke path global untuk ESP32
+                        await FirebaseDatabase.instance
+                            .ref('smartfarm/active_varietas')
+                            .set(newValue);
+
+                        setState(() {
+                          activeVarietas = newValue;
+                        });
+
+                        // Tampilkan sukses
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '✅ Config & varietas berhasil di-sync!\n${newValue.replaceAll('_', ' ').toUpperCase()}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(Icons.error, color: Colors.white),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text('❌ Gagal sync: $e')),
+                              ],
+                            ),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  items: varietasList.map((String varietas) {
+                    return DropdownMenuItem<String>(
+                      value: varietas,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.eco,
+                            size: 18,
+                            color: activeVarietas == varietas
+                                ? Colors.green
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            varietas.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              fontWeight: activeVarietas == varietas
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: activeVarietas == varietas
+                                  ? Colors.green
+                                  : Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              if (activeVarietas != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Varietas aktif: ${activeVarietas!.replaceAll('_', ' ').toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+
+
 
   Widget _buildHeaderCard(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
@@ -967,7 +1251,16 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              Navigator.pushNamed(context, '/profile');
+              if (title.toLowerCase().contains('tanaman')) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => KenaliTanamanmuScreen(),
+                    ),
+                  );
+              } else {
+                Navigator.pushNamed(context, '/profile');
+              }
             },
             child: const Text("Lihat Detail"),
             style: ElevatedButton.styleFrom(
