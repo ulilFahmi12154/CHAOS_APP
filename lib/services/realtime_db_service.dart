@@ -45,6 +45,18 @@ class RealtimeDbService {
         .map((event) => event.snapshot.value as int?);
   }
 
+  /// Stream untuk pH tanah
+  Stream<double?> phTanahStream(String varietas) {
+    return _dbRef.child('smartfarm/sensors/$varietas/ph_tanah').onValue.map((
+      event,
+    ) {
+      final value = event.snapshot.value;
+      if (value is int) return value.toDouble();
+      if (value is double) return value;
+      return null;
+    });
+  }
+
   /// Get one-time data untuk kelembapan tanah
   Future<int?> getKelembapanTanah(String varietas) async {
     final snapshot = await _dbRef
@@ -81,5 +93,96 @@ class RealtimeDbService {
         .child('smartfarm/sensors/$varietas/intensitas_cahaya')
         .get();
     return snapshot.value as int?;
+  }
+
+  /// Get one-time data untuk pH tanah
+  Future<double?> getPhTanah(String varietas) async {
+    final snapshot = await _dbRef
+        .child('smartfarm/sensors/$varietas/ph_tanah')
+        .get();
+    final value = snapshot.value;
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return null;
+  }
+  // ========== SETTINGS MANAGEMENT ==========
+
+  /// Get settings untuk user tertentu
+  Future<Map<String, dynamic>?> getUserSettings(String userId) async {
+    final snapshot = await _dbRef.child('users/$userId/settings').get();
+    if (snapshot.exists) {
+      return Map<String, dynamic>.from(snapshot.value as Map);
+    }
+    return null;
+  }
+
+  /// Stream untuk settings user
+  Stream<Map<String, dynamic>?> userSettingsStream(String userId) {
+    return _dbRef.child('users/$userId/settings').onValue.map((event) {
+      if (event.snapshot.exists) {
+        return Map<String, dynamic>.from(event.snapshot.value as Map);
+      }
+      return null;
+    });
+  }
+
+  /// Update varietas yang dipilih
+  Future<void> updateVarietas(String userId, String varietas) async {
+    await _dbRef.child('users/$userId/settings/varietas').set(varietas);
+  }
+
+  /// Update ambang batas suhu
+  Future<void> updateAmbangSuhu(String userId, double value) async {
+    await _dbRef.child('users/$userId/settings/ambang_batas/suhu').set(value);
+  }
+
+  /// Update ambang batas kelembapan udara
+  Future<void> updateAmbangKelembapanUdara(String userId, double value) async {
+    await _dbRef
+        .child('users/$userId/settings/ambang_batas/kelembapan_udara')
+        .set(value);
+  }
+
+  /// Update ambang batas pH tanah
+  Future<void> updateAmbangPhTanah(String userId, double value) async {
+    await _dbRef
+        .child('users/$userId/settings/ambang_batas/ph_tanah')
+        .set(value);
+  }
+
+  /// Update ambang batas intensitas cahaya
+  Future<void> updateAmbangIntensitasCahaya(String userId, double value) async {
+    await _dbRef
+        .child('users/$userId/settings/ambang_batas/intensitas_cahaya')
+        .set(value);
+  }
+
+  /// Update status notifikasi aplikasi
+  Future<void> updateNotifikasiEnabled(String userId, bool enabled) async {
+    await _dbRef
+        .child('users/$userId/settings/notifikasi/enabled')
+        .set(enabled);
+  }
+
+  /// Update notifikasi pompa irigasi
+  Future<void> updateNotifikasiPompa(String userId, bool enabled) async {
+    await _dbRef
+        .child('users/$userId/settings/notifikasi/pompa_irigasi')
+        .set(enabled);
+  }
+
+  /// Update notifikasi tanaman kritis
+  Future<void> updateNotifikasiKritis(String userId, bool enabled) async {
+    await _dbRef
+        .child('users/$userId/settings/notifikasi/tanaman_kritis')
+        .set(enabled);
+  }
+
+  /// Update semua settings sekaligus
+  Future<void> updateAllSettings(
+    String userId,
+    Map<String, dynamic> settings,
+  ) async {
+    await _dbRef.child('users/$userId/settings').set(settings);
   }
 }

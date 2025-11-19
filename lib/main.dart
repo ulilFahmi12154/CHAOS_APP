@@ -12,6 +12,8 @@ import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/rekomendasi_pupuk_screen.dart';
+import 'screens/intro_slides_screen.dart';
+import 'screens/welcome_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -109,6 +111,8 @@ class _MyAppState extends State<MyApp> {
         '/profile': (context) => const ProfileScreen(),
         '/welcome': (context) => const SplashScreen(),
         '/rekomendasi-pupuk': (context) => const RekomendasiPupukPage(),
+        '/intro': (context) => const IntroSlidesScreen(),
+        '/welcome': (context) => const WelcomeScreen(),
       },
     );
   }

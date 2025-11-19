@@ -1,7 +1,88 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
+import 'package:chaos_app/screens/plant_detail_screen.dart';
+  
+
+
+  Widget _buildSensorCard(
+    String title,
+    IconData icon,
+    Color color,
+    Stream<dynamic> dataStream,
+    String unit,
+    num minBatas,
+    num maxBatas,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          StreamBuilder<dynamic>(
+            stream: dataStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasData && snapshot.data != null) {
+                final value = snapshot.data;
+                return Column(
+                  children: [
+                    Text(
+                      '$value$unit',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ideal: $minBatas - $maxBatas',
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ((value - minBatas) / (maxBatas - minBatas)).clamp(0.0, 1.0),
+                        minHeight: 4,
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          color.withOpacity(0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const Text(
+                '--',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? activeVarietas;
   bool pompaStatus = false;
 
+
   @override
   void initState() {
     super.initState();
@@ -22,8 +104,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadActiveVarietas() async {
-    final ref = FirebaseDatabase.instance.ref('smartfarm/active_varietas');
-    ref.onValue.listen((event) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() {
+        activeVarietas = null;
+      });
+      return;
+    }
+
+    // Baca pilihan varietas per user
+    final userRef = FirebaseDatabase.instance.ref(
+      'users/${user.uid}/active_varietas',
+    );
+    userRef.onValue.listen((event) {
       if (event.snapshot.exists) {
         setState(() {
           activeVarietas = event.snapshot.value.toString();
@@ -44,14 +137,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final db = FirebaseDatabase.instance.ref(path);
     return db.onValue.map((event) {
       final data = event.snapshot.value;
+      List<Map<String, dynamic>> warnings = [];
+
       if (data is Map) {
-        return data.values
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList()
-            .take(3)
-            .toList();
+        // Data sekarang berupa Map dengan keys: suhu, tanah, udara, cahaya
+        data.forEach((key, value) {
+          if (value is Map) {
+            final warning = Map<String, dynamic>.from(value);
+            // Tambahkan sensor type dari key
+            warning['sensor'] = key.toString();
+            warnings.add(warning);
+          }
+        });
+
+        // Sort by timestamp descending (terbaru dulu)
+        warnings.sort((a, b) {
+          final timeA = a['timestamp'] ?? 0;
+          final timeB = b['timestamp'] ?? 0;
+          return timeB.compareTo(timeA);
+        });
       }
-      return [];
+
+      return warnings;
     });
   }
 
@@ -77,6 +184,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _buildHeaderCard(context),
+            const SizedBox(height: 16),
+            // Widget pemilihan varietas untuk percobaan
+            _buildVarietasPicker(),
             const SizedBox(height: 16),
             if (belumPilih)
               Container(
@@ -126,11 +236,292 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildSensorGrid(),
             const SizedBox(height: 16),
             _buildRecommendationRow(),
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
+
+  // Widget baru untuk pemilihan varietas dari Firestore
+  Widget _buildVarietasPicker() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('varietas_config')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Text(
+              'Tidak ada varietas tersedia',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        // Ambil list varietas dari Firestore
+        final varietasList = snapshot.data!.docs
+            .map((doc) => doc.id) // Gunakan document ID sebagai nama varietas
+            .toList();
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.science, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Pilih Varietas (Percobaan)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Ganti varietas secara cepat untuk testing',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: varietasList.contains(activeVarietas)
+                      ? activeVarietas
+                      : null,
+                  hint: const Text('Pilih varietas untuk testing...'),
+                  isExpanded: true,
+                  onChanged: (String? newValue) async {
+                    if (newValue != null) {
+                      try {
+                        // Tampilkan loading indicator
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Mengubah varietas & sync config...'),
+                              ],
+                            ),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+
+                        // 1. Ambil data config dari Firestore
+                        final docSnapshot = await FirebaseFirestore.instance
+                            .collection('varietas_config')
+                            .doc(newValue)
+                            .get();
+
+                        if (!docSnapshot.exists) {
+                          throw Exception(
+                            'Data varietas tidak ditemukan di Firestore',
+                          );
+                        }
+
+                        final data = docSnapshot.data()!;
+
+                        // 2. Sync config ke Realtime Database (untuk ESP32)
+                        await FirebaseDatabase.instance
+                            .ref('smartfarm/varietas_config/$newValue')
+                            .set({
+                              'soil_min': data['soil_min'] ?? 0,
+                              'soil_max': data['soil_max'] ?? 4095,
+                              'suhu_min': data['suhu_min'] ?? 0,
+                              'suhu_max': data['suhu_max'] ?? 100,
+                              'kelembapan_udara_min':
+                                  data['kelembapan_udara_min'] ?? 0,
+                              'kelembapan_udara_max':
+                                  data['kelembapan_udara_max'] ?? 100,
+                              'light_min': data['light_min'] ?? 0,
+                              'light_max': data['light_max'] ?? 4095,
+                              'nama': data['nama'] ?? newValue,
+                            });
+
+                        // 3. Simpan pilihan ke profile user
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) throw Exception('User tidak login');
+
+                        await FirebaseDatabase.instance
+                            .ref('users/${user.uid}/active_varietas')
+                            .set(newValue);
+
+                        // 4. Sync juga ke path global untuk ESP32
+                        await FirebaseDatabase.instance
+                            .ref('smartfarm/active_varietas')
+                            .set(newValue);
+
+                        setState(() {
+                          activeVarietas = newValue;
+                        });
+
+                        // Tampilkan sukses
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '✅ Config & varietas berhasil di-sync!\n${newValue.replaceAll('_', ' ').toUpperCase()}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(Icons.error, color: Colors.white),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text('❌ Gagal sync: $e')),
+                              ],
+                            ),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  items: varietasList.map((String varietas) {
+                    return DropdownMenuItem<String>(
+                      value: varietas,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.eco,
+                            size: 18,
+                            color: activeVarietas == varietas
+                                ? Colors.green
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            varietas.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              fontWeight: activeVarietas == varietas
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: activeVarietas == varietas
+                                  ? Colors.green
+                                  : Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              if (activeVarietas != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Varietas aktif: ${activeVarietas!.replaceAll('_', ' ').toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+
+
 
   Widget _buildHeaderCard(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
@@ -315,8 +706,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _deleteActiveVarietas() async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User tidak login');
+
       final db = FirebaseDatabase.instance.ref();
-      await db.child('smartfarm/active_varietas').remove();
+
+      // 1. Hapus pilihan varietas dari profile user
+      await db.child('users/${user.uid}/active_varietas').remove();
+
+      // 2. Hapus juga dari path global ESP32 agar Wokwi berhenti membaca
+      await db.child('smartfarm/active_varietas').set("");
 
       setState(() {
         activeVarietas = null;
@@ -324,8 +723,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Varietas berhasil dihapus'),
+          content: Text(
+            'Varietas dihapus. ESP32 akan berhenti membaca sensor.',
+          ),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
         ),
       );
     } catch (e) {
@@ -354,69 +756,21 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Kontrol Sistem Irigasi',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<dynamic>(
-            stream: FirebaseDatabase.instance
-                .ref('smartfarm/sensors/$varietasToUse/pompa')
-                .onValue
-                .map((e) => e.snapshot.value),
-            builder: (context, snapshot) {
-              bool isOn = snapshot.data == 'ON';
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Status Pompa'),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isOn ? Colors.green : Colors.red,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          isOn ? '🟢 ON' : '🔴 OFF',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _togglePompa(true),
-                        icon: const Icon(Icons.power),
-                        label: const Text('Nyalakan'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => _togglePompa(false),
-                        icon: const Icon(Icons.power_off),
-                        label: const Text('Matikan'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Status Sistem Irigasi',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: Icon(Icons.tune, color: Colors.blue.shade700),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/control');
+                },
+                tooltip: 'Ke Halaman Kontrol',
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           StreamBuilder<dynamic>(
@@ -424,29 +778,154 @@ class _HomeScreenState extends State<HomeScreen> {
                 .ref('smartfarm/mode_otomatis')
                 .onValue
                 .map((e) => e.snapshot.value),
-            builder: (context, snapshot) {
-              bool isAuto = snapshot.data == true;
-              return Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isAuto ? Colors.blue.shade50 : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    isAuto
-                        ? Icon(Icons.auto_mode, color: Colors.blue)
-                        : Icon(Icons.touch_app, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Mode: ${isAuto ? "Otomatis" : "Manual"}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isAuto ? Colors.blue : Colors.orange,
+            builder: (context, modeSnapshot) {
+              bool isAuto = modeSnapshot.data == true;
+
+              return StreamBuilder<dynamic>(
+                stream: FirebaseDatabase.instance
+                    .ref('smartfarm/sensors/$varietasToUse/pompa')
+                    .onValue
+                    .map((e) => e.snapshot.value),
+                builder: (context, pompaSnapshot) {
+                  bool isOn = pompaSnapshot.data == 'ON';
+
+                  return Column(
+                    children: [
+                      // Status Mode
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isAuto
+                              ? Colors.blue.shade50
+                              : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isAuto
+                                ? Colors.blue.shade200
+                                : Colors.orange.shade200,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isAuto ? Icons.auto_mode : Icons.touch_app,
+                              color: isAuto
+                                  ? Colors.blue.shade700
+                                  : Colors.orange.shade700,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Mode: ${isAuto ? "Otomatis" : "Manual"}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: isAuto
+                                          ? Colors.blue.shade800
+                                          : Colors.orange.shade800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isAuto
+                                        ? 'Pompa dikontrol berdasarkan kelembapan tanah'
+                                        : 'Pompa dikontrol manual dari aplikasi',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 12),
+                      // Status Pompa
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isOn
+                              ? Colors.green.shade50
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isOn
+                                ? Colors.green.shade200
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: isOn ? Colors.green : Colors.grey,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isOn
+                                    ? Icons.water_drop
+                                    : Icons.water_drop_outlined,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Status Pompa',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isOn ? 'AKTIF (ON)' : 'TIDAK AKTIF (OFF)',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: isOn
+                                          ? Colors.green.shade800
+                                          : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isOn ? Colors.green : Colors.grey,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                isOn ? 'ON' : 'OFF',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),
@@ -487,6 +966,46 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         final warnings = snapshot.data!;
+
+        // Filter hanya warning yang punya level (warning terkini dari ESP32)
+        // Dan urutkan berdasarkan level: critical dulu, baru warning
+        final activeWarnings = warnings
+            .where((w) => w['level'] != null)
+            .toList();
+        activeWarnings.sort((a, b) {
+          // Critical (⚠️) lebih prioritas daripada warning (⚡)
+          final levelA = a['level'] == 'critical' ? 0 : 1;
+          final levelB = b['level'] == 'critical' ? 0 : 1;
+          return levelA.compareTo(levelB);
+        });
+
+        if (activeWarnings.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green.shade700,
+                  size: 32,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Semua sensor dalam kondisi optimal ✨',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -499,46 +1018,69 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.warning, color: Colors.red.shade700, size: 28),
+                  Icon(
+                    Icons.warning_amber,
+                    color: Colors.red.shade700,
+                    size: 28,
+                  ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Peringatan Sistem',
+                  Text(
+                    'Peringatan Terkini (${activeWarnings.length} sensor)',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Colors.red,
+                      color: Colors.red.shade800,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              ...warnings.map(
-                (w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+              ...activeWarnings.map(
+                (w) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: w['level'] == 'critical'
+                        ? Colors.red.shade100
+                        : Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: w['level'] == 'critical'
+                          ? Colors.red.shade300
+                          : Colors.orange.shade300,
+                    ),
+                  ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 4,
-                        height: 4,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
+                      Icon(
+                        w['level'] == 'critical' ? Icons.error : Icons.warning,
+                        color: w['level'] == 'critical'
+                            ? Colors.red.shade700
+                            : Colors.orange.shade700,
+                        size: 20,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              w['type'] ?? 'Peringatan',
-                              style: const TextStyle(
+                              w['type'] ?? 'Sensor',
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: w['level'] == 'critical'
+                                    ? Colors.red.shade900
+                                    : Colors.orange.shade900,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
                               w['message'] ?? '',
-                              style: const TextStyle(fontSize: 12),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade800,
+                              ),
                             ),
                           ],
                         ),
@@ -620,87 +1162,29 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSensorCard(
+                'pH Tanah',
+                Icons.science,
+                Colors.purple,
+                _dbService.phTanahStream(varietasToUse),
+                'pH',
+                5.5,
+                7.5,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Container()), // Placeholder kosong untuk symmetry
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildSensorCard(
-    String title,
-    IconData icon,
-    Color color,
-    Stream<dynamic> dataStream,
-    String unit,
-    num minBatas,
-    num maxBatas,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          StreamBuilder<dynamic>(
-            stream: dataStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasData && snapshot.data != null) {
-                final value = snapshot.data;
-                return Column(
-                  children: [
-                    Text(
-                      '$value$unit',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ideal: $minBatas - $maxBatas',
-                      style: const TextStyle(fontSize: 10, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: ((value - minBatas) / (maxBatas - minBatas))
-                            .clamp(0.0, 1.0),
-                        minHeight: 4,
-                        backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          color.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              return const Text(
-                '--',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildRecommendationRow() {
     return Row(
@@ -769,6 +1253,13 @@ class _HomeScreenState extends State<HomeScreen> {
               // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi
               if (title.toLowerCase().contains('pupuk')) {
                 Navigator.pushNamed(context, '/rekomendasi-pupuk');
+              if (title.toLowerCase().contains('tanaman')) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => KenaliTanamanmuScreen(),
+                    ),
+                  );
               } else {
                 Navigator.pushNamed(context, '/profile');
               }
@@ -785,3 +1276,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
