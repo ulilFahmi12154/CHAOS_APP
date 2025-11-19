@@ -11,6 +11,7 @@ import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'screens/rekomendasi_pupuk_screen.dart';
 import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
 
@@ -113,6 +114,8 @@ class _MyAppState extends State<MyApp> {
         '/history': (context) => const HistoryScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/welcome': (context) => const SplashScreen(),
+        '/rekomendasi-pupuk': (context) => const RekomendasiPupukPage(),
         '/intro': (context) => const IntroSlidesScreen(),
         '/welcome': (context) => const WelcomeScreen(),
       },

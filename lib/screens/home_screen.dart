@@ -1,89 +1,90 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
 import 'package:chaos_app/screens/plant_detail_screen.dart';
-  
 
-
-  Widget _buildSensorCard(
-    String title,
-    IconData icon,
-    Color color,
-    Stream<dynamic> dataStream,
-    String unit,
-    num minBatas,
-    num maxBatas,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          StreamBuilder<dynamic>(
-            stream: dataStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasData && snapshot.data != null) {
-                final value = snapshot.data;
-                return Column(
-                  children: [
-                    Text(
-                      '$value$unit',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+Widget _buildSensorCard(
+  String title,
+  IconData icon,
+  Color color,
+  Stream<dynamic> dataStream,
+  String unit,
+  num minBatas,
+  num maxBatas,
+) {
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        StreamBuilder<dynamic>(
+          stream: dataStream,
+          builder: (context, snapshot) {
+            if (snapshot.hasData && snapshot.data != null) {
+              final value = snapshot.data;
+              return Column(
+                children: [
+                  Text(
+                    '$value$unit',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ideal: $minBatas - $maxBatas',
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: ((value - minBatas) / (maxBatas - minBatas)).clamp(
+                        0.0,
+                        1.0,
+                      ),
+                      minHeight: 4,
+                      backgroundColor: Colors.grey.shade300,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        color.withOpacity(0.7),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ideal: $minBatas - $maxBatas',
-                      style: const TextStyle(fontSize: 10, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: ((value - minBatas) / (maxBatas - minBatas)).clamp(0.0, 1.0),
-                        minHeight: 4,
-                        backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          color.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              return const Text(
-                '--',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
               );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+            }
+            return const Text(
+              '--',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            );
+          },
+        ),
+      ],
+    ),
+  );
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -96,7 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final RealtimeDbService _dbService = RealtimeDbService();
   String? activeVarietas;
   bool pompaStatus = false;
-
 
   @override
   void initState() {
@@ -520,9 +520,6 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
-
-
-
 
   Widget _buildHeaderCard(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
@@ -1185,8 +1182,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
-
   Widget _buildRecommendationRow() {
     return Row(
       children: [
@@ -1251,27 +1246,29 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              if (title.toLowerCase().contains('tanaman')) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => KenaliTanamanmuScreen(),
-                    ),
-                  );
+              // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi
+              if (title.toLowerCase().contains('pupuk')) {
+                Navigator.pushNamed(context, '/rekomendasi-pupuk');
+              } else if (title.toLowerCase().contains('tanaman')) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => KenaliTanamanmuScreen(),
+                  ),
+                );
               } else {
                 Navigator.pushNamed(context, '/profile');
               }
             },
-            child: const Text("Lihat Detail"),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size.fromHeight(32),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               textStyle: const TextStyle(fontSize: 12),
             ),
+            child: const Text("Lihat Detail"),
           ),
         ],
       ),
     );
   }
 }
-
