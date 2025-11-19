@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
@@ -767,14 +766,19 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              Navigator.pushNamed(context, '/profile');
+              // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi
+              if (title.toLowerCase().contains('pupuk')) {
+                Navigator.pushNamed(context, '/rekomendasi-pupuk');
+              } else {
+                Navigator.pushNamed(context, '/profile');
+              }
             },
-            child: const Text("Lihat Detail"),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size.fromHeight(32),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               textStyle: const TextStyle(fontSize: 12),
             ),
+            child: const Text("Lihat Detail"),
           ),
         ],
       ),
