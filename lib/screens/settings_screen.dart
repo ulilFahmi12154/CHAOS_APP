@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Stream subscription untuk real-time updates
   StreamSubscription<Map<String, dynamic>?>? _settingsSubscription;
+  StreamSubscription<DatabaseEvent>? _activeVarietasSubscription;
 
   // Nilai ambang batas (min/max range yang bisa di-edit user via RangeSlider)
   // Ini adalah nilai CUSTOM user, bukan default dari Firestore
@@ -63,16 +64,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Convert ID varietas (bara, patra_3) ke display name (Bara, Patra 3)
   String _getVarietasDisplayName(String id) {
+    // Return empty jika id kosong
+    if (id.isEmpty) return '';
+
     // Cari di list varietas yang sudah di-load dari Firestore
     final match = _varietasList.firstWhere(
       (v) => v.toLowerCase().replaceAll(' ', '_') == id.toLowerCase(),
       orElse: () => id
           .replaceAll('_', ' ')
           .split(' ')
+          .where((word) => word.isNotEmpty) // Filter empty words
           .map((word) => word[0].toUpperCase() + word.substring(1))
           .join(' '),
     );
     return match;
+  }
+
+  /// Clamp range values agar selalu dalam batas absolut
+  RangeValues _clampRange(
+    double min,
+    double max,
+    double absMin,
+    double absMax,
+  ) {
+    // Pastikan min tidak lebih kecil dari absMin
+    final clampedMin = min.clamp(absMin, absMax);
+    // Pastikan max tidak lebih besar dari absMax
+    final clampedMax = max.clamp(absMin, absMax);
+    // Pastikan min <= max
+    if (clampedMin > clampedMax) {
+      return RangeValues(absMin, absMax);
+    }
+    return RangeValues(clampedMin, clampedMax);
   }
 
   @override
@@ -162,6 +185,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           phAbsMax = newPhMax;
           luxAbsMin = newLuxMin;
           luxAbsMax = newLuxMax;
+
+          // Re-clamp existing ranges agar sesuai dengan batas absolut baru
+          suhuRange = _clampRange(
+            suhuRange.start,
+            suhuRange.end,
+            suhuAbsMin,
+            suhuAbsMax,
+          );
+          kelembapanUdaraRange = _clampRange(
+            kelembapanUdaraRange.start,
+            kelembapanUdaraRange.end,
+            humAbsMin,
+            humAbsMax,
+          );
+          kelembapanTanahRange = _clampRange(
+            kelembapanTanahRange.start,
+            kelembapanTanahRange.end,
+            soilAbsMin,
+            soilAbsMax,
+          );
+          phTanahRange = _clampRange(
+            phTanahRange.start,
+            phTanahRange.end,
+            phAbsMin,
+            phAbsMax,
+          );
+          intensitasCahayaRange = _clampRange(
+            intensitasCahayaRange.start,
+            intensitasCahayaRange.end,
+            luxAbsMin,
+            luxAbsMax,
+          );
         });
 
         // ignore: avoid_print
@@ -206,14 +261,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (settings != null && mounted) {
         // Load varietas - prioritaskan active_varietas jika ada
-        if (activeVarietasSnapshot.exists) {
+        if (activeVarietasSnapshot.exists &&
+            activeVarietasSnapshot.value != null &&
+            activeVarietasSnapshot.value.toString().isNotEmpty) {
           _selectedVarietas = activeVarietasSnapshot.value.toString();
         } else {
-          _selectedVarietas = settings['varietas'] ?? 'patra_3';
+          // Jika tidak ada active_varietas, set ke empty (bukan default)
+          _selectedVarietas = settings['varietas'] ?? '';
         }
 
-        // Load config varietas dari Firestore untuk mendapatkan min/max
-        await _loadVarietasConfig(_selectedVarietas);
+        // Load config varietas dari Firestore hanya jika varietas ada
+        if (_selectedVarietas.isNotEmpty) {
+          await _loadVarietasConfig(_selectedVarietas);
+        }
 
         setState(() {
           // Load ambang batas (min/max ranges yang user set)
@@ -225,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (suhuData is Map) {
               final min = (suhuData['min'] ?? suhuAbsMin).toDouble();
               final max = (suhuData['max'] ?? suhuAbsMax).toDouble();
-              suhuRange = RangeValues(min, max);
+              suhuRange = _clampRange(min, max, suhuAbsMin, suhuAbsMax);
             } else {
               // Backward compatibility: jika masih nilai tunggal, use as midpoint
               suhuRange = RangeValues(suhuAbsMin, suhuAbsMax);
@@ -236,7 +296,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (humData is Map) {
               final min = (humData['min'] ?? humAbsMin).toDouble();
               final max = (humData['max'] ?? humAbsMax).toDouble();
-              kelembapanUdaraRange = RangeValues(min, max);
+              kelembapanUdaraRange = _clampRange(
+                min,
+                max,
+                humAbsMin,
+                humAbsMax,
+              );
             } else {
               kelembapanUdaraRange = RangeValues(humAbsMin, humAbsMax);
             }
@@ -246,7 +311,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (soilData is Map) {
               final min = (soilData['min'] ?? soilAbsMin).toDouble();
               final max = (soilData['max'] ?? soilAbsMax).toDouble();
-              kelembapanTanahRange = RangeValues(min, max);
+              kelembapanTanahRange = _clampRange(
+                min,
+                max,
+                soilAbsMin,
+                soilAbsMax,
+              );
             } else {
               kelembapanTanahRange = RangeValues(soilAbsMin, soilAbsMax);
             }
@@ -256,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (phData is Map) {
               final min = (phData['min'] ?? phAbsMin).toDouble();
               final max = (phData['max'] ?? phAbsMax).toDouble();
-              phTanahRange = RangeValues(min, max);
+              phTanahRange = _clampRange(min, max, phAbsMin, phAbsMax);
             } else {
               phTanahRange = RangeValues(phAbsMin, phAbsMax);
             }
@@ -266,7 +336,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (luxData is Map) {
               final min = (luxData['min'] ?? luxAbsMin).toDouble();
               final max = (luxData['max'] ?? luxAbsMax).toDouble();
-              intensitasCahayaRange = RangeValues(min, max);
+              intensitasCahayaRange = _clampRange(
+                min,
+                max,
+                luxAbsMin,
+                luxAbsMax,
+              );
             } else {
               intensitasCahayaRange = RangeValues(luxAbsMin, luxAbsMax);
             }
@@ -323,8 +398,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Cancel existing subscription jika ada
     _settingsSubscription?.cancel();
+    _activeVarietasSubscription?.cancel();
 
-    // Listen to changes in real-time
+    // Listen to settings changes in real-time
     _settingsSubscription = _dbService
         .userSettingsStream(_userId!)
         .listen(
@@ -350,12 +426,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
             print('Error in settings stream: $error');
           },
         );
+
+    // Listen to active_varietas changes/deletions
+    final activeVarietasRef = FirebaseDatabase.instance.ref(
+      'users/$_userId/active_varietas',
+    );
+
+    _activeVarietasSubscription = activeVarietasRef.onValue.listen(
+      (event) {
+        if (!mounted) return;
+
+        if (!event.snapshot.exists || event.snapshot.value == null) {
+          // Varietas dihapus di Dashboard
+          print('🗑️ Active varietas dihapus, set ke empty');
+
+          setState(() {
+            _selectedVarietas = ''; // Kosongkan, sama seperti di Dashboard
+          });
+        } else {
+          // Varietas berubah
+          final newVarietas = event.snapshot.value.toString();
+
+          if (newVarietas != _selectedVarietas) {
+            print(
+              '🔄 Active varietas berubah: $_selectedVarietas → $newVarietas',
+            );
+
+            setState(() {
+              _selectedVarietas = newVarietas;
+            });
+
+            // Load config varietas baru
+            _loadVarietasConfig(newVarietas);
+          }
+        }
+      },
+      onError: (error) {
+        print('Error in active_varietas stream: $error');
+      },
+    );
   }
 
   @override
   void dispose() {
     // Cancel subscription saat widget di-dispose
     _settingsSubscription?.cancel();
+    _activeVarietasSubscription?.cancel();
     super.dispose();
   }
 
@@ -752,14 +868,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                child: Text(
-                                  _getVarietasDisplayName(_selectedVarietas),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                child: _selectedVarietas.isEmpty
+                                    ? Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            color: Colors.white.withOpacity(
+                                              0.7,
+                                            ),
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Expanded(
+                                            child: Text(
+                                              'Belum ada varietas yang dipilih',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontStyle: FontStyle.italic,
+                                                fontSize: 13,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Text(
+                                        _getVarietasDisplayName(
+                                          _selectedVarietas,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                               ),
                               const Icon(
                                 Icons.keyboard_arrow_down,
