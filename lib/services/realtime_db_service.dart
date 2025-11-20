@@ -143,6 +143,13 @@ class RealtimeDbService {
         .set(value);
   }
 
+  /// Update ambang batas kelembapan tanah
+  Future<void> updateAmbangKelembapanTanah(String userId, double value) async {
+    await _dbRef
+        .child('users/$userId/settings/ambang_batas/kelembapan_tanah')
+        .set(value);
+  }
+
   /// Update ambang batas pH tanah
   Future<void> updateAmbangPhTanah(String userId, double value) async {
     await _dbRef

@@ -38,6 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double suhu = 24;
   double humMin = 50, humMax = 58;
   double kelembapanUdara = 53;
+  double soilMin = 1100, soilMax = 1900;
+  double kelembapanTanah = 1500;
   double phMin = 5.8, phMax = 6.5;
   double phTanah = 6.0;
   double luxMin = 19000, luxMax = 55000;
@@ -136,6 +138,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final newPhMin = (data['ph_min'] ?? 5.8).toDouble();
         final newPhMax = (data['ph_max'] ?? 6.5).toDouble();
 
+        // Update range kelembapan tanah (soil moisture sensor)
+        final newSoilMin = (data['soil_min'] ?? 1100).toDouble();
+        final newSoilMax = (data['soil_max'] ?? 1900).toDouble();
+
         // Update range intensitas cahaya
         final newLuxMin = (data['light_min'] ?? 1800).toDouble();
         final newLuxMax = (data['light_max'] ?? 4095).toDouble();
@@ -146,6 +152,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           suhuMax = newSuhuMax;
           humMin = newHumMin;
           humMax = newHumMax;
+          soilMin = newSoilMin;
+          soilMax = newSoilMax;
           phMin = newPhMin;
           phMax = newPhMax;
           luxMin = newLuxMin;
@@ -154,6 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Clamp nilai current agar dalam range baru
           suhu = suhu.clamp(suhuMin, suhuMax);
           kelembapanUdara = kelembapanUdara.clamp(humMin, humMax);
+          kelembapanTanah = kelembapanTanah.clamp(soilMin, soilMax);
           phTanah = phTanah.clamp(phMin, phMax);
           intensitasCahaya = intensitasCahaya.clamp(luxMin, luxMax);
         });
@@ -163,7 +172,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // ignore: avoid_print
         print('  Suhu: $suhuMin - $suhuMax (current: $suhu)');
         // ignore: avoid_print
-        print('  Kelembapan: $humMin - $humMax (current: $kelembapanUdara)');
+        print(
+          '  Kelembapan Udara: $humMin - $humMax (current: $kelembapanUdara)',
+        );
+        // ignore: avoid_print
+        print(
+          '  Kelembapan Tanah: $soilMin - $soilMax (current: $kelembapanTanah)',
+        );
         // ignore: avoid_print
         print('  pH: $phMin - $phMax (current: $phTanah)');
         // ignore: avoid_print
@@ -210,6 +225,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             kelembapanUdara = (ambangBatas['kelembapan_udara'] ?? 53)
                 .toDouble()
                 .clamp(humMin, humMax);
+            kelembapanTanah = (ambangBatas['kelembapan_tanah'] ?? 1500)
+                .toDouble()
+                .clamp(soilMin, soilMax);
             phTanah = (ambangBatas['ph_tanah'] ?? 6.0).toDouble().clamp(
               phMin,
               phMax,
@@ -233,7 +251,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Log untuk debugging
         print('Loaded user settings:');
         print('  Suhu: $suhu (range: $suhuMin - $suhuMax)');
-        print('  Kelembapan: $kelembapanUdara (range: $humMin - $humMax)');
+        print(
+          '  Kelembapan Udara: $kelembapanUdara (range: $humMin - $humMax)',
+        );
+        print(
+          '  Kelembapan Tanah: $kelembapanTanah (range: $soilMin - $soilMax)',
+        );
         print('  pH: $phTanah (range: $phMin - $phMax)');
         print('  Cahaya: $intensitasCahaya (range: $luxMin - $luxMax)');
 
@@ -305,6 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'ambang_batas': {
         'suhu': suhu,
         'kelembapan_udara': kelembapanUdara,
+        'kelembapan_tanah': kelembapanTanah,
         'ph_tanah': phTanah,
         'intensitas_cahaya': intensitasCahaya,
       },
@@ -334,6 +358,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _updateKelembapanUdara(double value) async {
     if (_userId == null) return;
     await _dbService.updateAmbangKelembapanUdara(_userId!, value);
+  }
+
+  /// Update ambang kelembapan tanah ke Firebase
+  Future<void> _updateKelembapanTanah(double value) async {
+    if (_userId == null) return;
+    await _dbService.updateAmbangKelembapanTanah(_userId!, value);
   }
 
   /// Update ambang pH tanah ke Firebase
@@ -584,6 +614,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _updateKelembapanUdara(v);
                         },
                         divisions: (humMax - humMin).toInt(),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Kelembapan Tanah
+                      _SliderIndicator(
+                        icon: const Icon(
+                          Icons.terrain,
+                          color: Color(0xFF234D2B),
+                          size: 20,
+                        ),
+                        label: 'Kelembapan Tanah',
+                        minLabel: soilMin.toStringAsFixed(0),
+                        maxLabel: soilMax.toStringAsFixed(0),
+                        min: soilMin,
+                        max: soilMax,
+                        value: kelembapanTanah,
+                        valueLabel: kelembapanTanah.toStringAsFixed(0),
+                        onChanged: (v) {
+                          setState(() => kelembapanTanah = v);
+                          _updateKelembapanTanah(v);
+                        },
+                        divisions: ((soilMax - soilMin) / 10).toInt(),
                       ),
                       const SizedBox(height: 14),
 
