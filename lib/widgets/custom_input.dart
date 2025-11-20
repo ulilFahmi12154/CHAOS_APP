@@ -5,6 +5,7 @@ class CustomInput extends StatefulWidget {
   final String label;
   final bool obscure;
   final IconData icon;
+  final ValueChanged<String>? onChanged;
 
   const CustomInput({
     super.key,
@@ -12,6 +13,7 @@ class CustomInput extends StatefulWidget {
     required this.label,
     required this.icon,
     this.obscure = false,
+    this.onChanged,
   });
 
   @override
@@ -32,6 +34,7 @@ class _CustomInputState extends State<CustomInput> {
     return TextField(
       controller: widget.controller,
       obscureText: _obscure,
+      onChanged: widget.onChanged,
       decoration: InputDecoration(
         prefixIcon: Icon(widget.icon, color: Colors.green.shade700),
         labelText: widget.label,

@@ -100,6 +100,11 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
         colorSchemeSeed: Colors.green,
         scaffoldBackgroundColor: Colors.green.shade50,
+        // Global page transition: slide from right with fade
+        pageTransitionsTheme: PageTransitionsTheme(builders: {
+          for (var platform in TargetPlatform.values)
+            platform: _SlideFadePageTransitionsBuilder(),
+        }),
         textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       home: const SplashScreen(),
@@ -114,6 +119,25 @@ class _MyAppState extends State<MyApp> {
         '/intro': (context) => const IntroSlidesScreen(),
         '/welcome': (context) => const WelcomeScreen(),
       },
+    );
+  }
+}
+
+class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SlideFadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(PageRoute<T> route, BuildContext context,
+      Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
+    // Use Curved animation for smoother effect
+    final curved = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0.15, 0), end: Offset.zero).animate(curved),
+        child: child,
+      ),
     );
   }
 }
