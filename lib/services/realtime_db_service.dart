@@ -127,8 +127,12 @@ class RealtimeDbService {
   }
 
   /// Update varietas yang dipilih
+  /// Simpan di dua path untuk sinkronisasi dengan home screen
   Future<void> updateVarietas(String userId, String varietas) async {
+    // Update di settings (untuk settings screen)
     await _dbRef.child('users/$userId/settings/varietas').set(varietas);
+    // Update di active_varietas (untuk home screen/dashboard)
+    await _dbRef.child('users/$userId/active_varietas').set(varietas);
   }
 
   /// Update ambang batas suhu

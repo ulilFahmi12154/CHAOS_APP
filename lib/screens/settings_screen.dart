@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_scaffold.dart';
 import '../services/auth_service.dart';
@@ -205,9 +206,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Load settings dari Firebase (one-time untuk initial load)
       final settings = await _dbService.getUserSettings(_userId!);
 
+      // Juga cek active_varietas untuk sinkronisasi dengan home screen
+      final activeVarietasRef = FirebaseDatabase.instance.ref(
+        'users/$_userId/active_varietas',
+      );
+      final activeVarietasSnapshot = await activeVarietasRef.get();
+
       if (settings != null && mounted) {
-        // Load varietas
-        _selectedVarietas = settings['varietas'] ?? 'patra_3';
+        // Load varietas - prioritaskan active_varietas jika ada
+        if (activeVarietasSnapshot.exists) {
+          _selectedVarietas = activeVarietasSnapshot.value.toString();
+        } else {
+          _selectedVarietas = settings['varietas'] ?? 'patra_3';
+        }
 
         // Load config varietas dari Firestore untuk mendapatkan min/max
         await _loadVarietasConfig(_selectedVarietas);
@@ -471,11 +482,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 .toLowerCase()
                                 .replaceAll(' ', '_');
 
-                            // Load config varietas baru dari Firestore
-                            await _loadVarietasConfig(varietasId);
+                            try {
+                              // Tampilkan loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text(
+                                        'Mengubah varietas & sync config...',
+                                      ),
+                                    ],
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
 
-                            setState(() => _selectedVarietas = varietasId);
-                            await _updateVarietas(varietasId);
+                              // 1. Load config varietas dari Firestore
+                              final docSnapshot = await _firestore
+                                  .collection('varietas_config')
+                                  .doc(varietasId)
+                                  .get();
+
+                              if (!docSnapshot.exists) {
+                                throw Exception(
+                                  'Data varietas tidak ditemukan',
+                                );
+                              }
+
+                              final data = docSnapshot.data()!;
+
+                              // 2. Sync config ke Realtime Database untuk ESP32/Wokwi
+                              await FirebaseDatabase.instance
+                                  .ref('smartfarm/varietas_config/$varietasId')
+                                  .set({
+                                    'soil_min': data['soil_min'] ?? 1100,
+                                    'soil_max': data['soil_max'] ?? 1900,
+                                    'suhu_min': data['suhu_min'] ?? 22,
+                                    'suhu_max': data['suhu_max'] ?? 28,
+                                    'kelembapan_udara_min':
+                                        data['kelembapan_udara_min'] ?? 50,
+                                    'kelembapan_udara_max':
+                                        data['kelembapan_udara_max'] ?? 58,
+                                    'light_min': data['light_min'] ?? 1800,
+                                    'light_max': data['light_max'] ?? 4095,
+                                    'ph_min': data['ph_min'] ?? 5.8,
+                                    'ph_max': data['ph_max'] ?? 6.5,
+                                    'nama': data['nama'] ?? varietasId,
+                                  });
+
+                              // 3. Update active_varietas global untuk ESP32
+                              await FirebaseDatabase.instance
+                                  .ref('smartfarm/active_varietas')
+                                  .set(varietasId);
+
+                              // 4. Load config ke UI
+                              await _loadVarietasConfig(varietasId);
+
+                              // 5. Update user settings
+                              setState(() => _selectedVarietas = varietasId);
+                              await _updateVarietas(varietasId);
+
+                              // Tampilkan sukses
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            '✅ Varietas berhasil di-sync ke Wokwi!\n${varietasId.replaceAll('_', ' ').toUpperCase()}',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('❌ Gagal sync: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
                           }
                         },
                         child: InputDecorator(

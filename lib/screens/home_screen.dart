@@ -98,10 +98,67 @@ class _HomeScreenState extends State<HomeScreen> {
   String? activeVarietas;
   bool pompaStatus = false;
 
+  // Ambang batas dari settings (default values)
+  double suhuMin = 22, suhuMax = 28;
+  double humMin = 50, humMax = 58;
+  double soilMin = 1100, soilMax = 1900;
+  double phMin = 5.8, phMax = 6.5;
+  double luxMin = 1800, luxMax = 4095;
+
   @override
   void initState() {
     super.initState();
     _loadActiveVarietas();
+    _loadUserSettings();
+  }
+
+  /// Load config varietas dari Firestore untuk mendapatkan min/max ranges
+  Future<void> _loadVarietasConfig(String varietasId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('varietas_config')
+          .doc(varietasId)
+          .get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+
+        setState(() {
+          // Update range dari Firestore config
+          suhuMin = (data['suhu_min'] ?? 22).toDouble();
+          suhuMax = (data['suhu_max'] ?? 28).toDouble();
+          humMin = (data['kelembapan_udara_min'] ?? 50).toDouble();
+          humMax = (data['kelembapan_udara_max'] ?? 58).toDouble();
+          soilMin = (data['soil_min'] ?? 1100).toDouble();
+          soilMax = (data['soil_max'] ?? 1900).toDouble();
+          phMin = (data['ph_min'] ?? 5.8).toDouble();
+          phMax = (data['ph_max'] ?? 6.5).toDouble();
+          luxMin = (data['light_min'] ?? 1800).toDouble();
+          luxMax = (data['light_max'] ?? 4095).toDouble();
+        });
+      }
+    } catch (e) {
+      print('Error loading varietas config: $e');
+    }
+  }
+
+  /// Load ambang batas dari user settings
+  Future<void> _loadUserSettings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Listen to varietas changes
+    final varietasRef = FirebaseDatabase.instance.ref(
+      'users/${user.uid}/active_varietas',
+    );
+
+    varietasRef.onValue.listen((event) async {
+      if (event.snapshot.exists && mounted) {
+        final varietas = event.snapshot.value.toString();
+        // Load config untuk varietas ini
+        await _loadVarietasConfig(varietas);
+      }
+    });
   }
 
   Future<void> _loadActiveVarietas() async {
@@ -186,9 +243,6 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _buildHeaderCard(context),
             const SizedBox(height: 16),
-            // Widget pemilihan varietas untuk percobaan
-            _buildVarietasPicker(),
-            const SizedBox(height: 16),
             if (belumPilih)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -241,283 +295,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  // Widget baru untuk pemilihan varietas dari Firestore
-  Widget _buildVarietasPicker() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('varietas_config')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Text(
-              'Tidak ada varietas tersedia',
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        // Ambil list varietas dari Firestore
-        final varietasList = snapshot.data!.docs
-            .map((doc) => doc.id) // Gunakan document ID sebagai nama varietas
-            .toList();
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.science, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Pilih Varietas (Percobaan)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Ganti varietas secara cepat untuk testing',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: varietasList.contains(activeVarietas)
-                      ? activeVarietas
-                      : null,
-                  hint: const Text('Pilih varietas untuk testing...'),
-                  isExpanded: true,
-                  onChanged: (String? newValue) async {
-                    if (newValue != null) {
-                      try {
-                        // Tampilkan loading indicator
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Row(
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Text('Mengubah varietas & sync config...'),
-                              ],
-                            ),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-
-                        // 1. Ambil data config dari Firestore
-                        final docSnapshot = await FirebaseFirestore.instance
-                            .collection('varietas_config')
-                            .doc(newValue)
-                            .get();
-
-                        if (!docSnapshot.exists) {
-                          throw Exception(
-                            'Data varietas tidak ditemukan di Firestore',
-                          );
-                        }
-
-                        final data = docSnapshot.data()!;
-
-                        // 2. Sync config ke Realtime Database (untuk ESP32)
-                        await FirebaseDatabase.instance
-                            .ref('smartfarm/varietas_config/$newValue')
-                            .set({
-                              'soil_min': data['soil_min'] ?? 0,
-                              'soil_max': data['soil_max'] ?? 4095,
-                              'suhu_min': data['suhu_min'] ?? 0,
-                              'suhu_max': data['suhu_max'] ?? 100,
-                              'kelembapan_udara_min':
-                                  data['kelembapan_udara_min'] ?? 0,
-                              'kelembapan_udara_max':
-                                  data['kelembapan_udara_max'] ?? 100,
-                              'light_min': data['light_min'] ?? 0,
-                              'light_max': data['light_max'] ?? 4095,
-                              'nama': data['nama'] ?? newValue,
-                            });
-
-                        // 3. Simpan pilihan ke profile user
-                        final user = FirebaseAuth.instance.currentUser;
-                        if (user == null) throw Exception('User tidak login');
-
-                        await FirebaseDatabase.instance
-                            .ref('users/${user.uid}/active_varietas')
-                            .set(newValue);
-
-                        // 4. Sync juga ke path global untuk ESP32
-                        await FirebaseDatabase.instance
-                            .ref('smartfarm/active_varietas')
-                            .set(newValue);
-
-                        setState(() {
-                          activeVarietas = newValue;
-                        });
-
-                        // Tampilkan sukses
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    '✅ Config & varietas berhasil di-sync!\n${newValue.replaceAll('_', ' ').toUpperCase()}',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            backgroundColor: Colors.green,
-                            duration: const Duration(seconds: 3),
-                          ),
-                        );
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                const Icon(Icons.error, color: Colors.white),
-                                const SizedBox(width: 12),
-                                Expanded(child: Text('❌ Gagal sync: $e')),
-                              ],
-                            ),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  items: varietasList.map((String varietas) {
-                    return DropdownMenuItem<String>(
-                      value: varietas,
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.eco,
-                            size: 18,
-                            color: activeVarietas == varietas
-                                ? Colors.green
-                                : Colors.grey,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            varietas.replaceAll('_', ' ').toUpperCase(),
-                            style: TextStyle(
-                              fontWeight: activeVarietas == varietas
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              color: activeVarietas == varietas
-                                  ? Colors.green
-                                  : Colors.black,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    border: InputBorder.none,
-                  ),
-                ),
-              ),
-              if (activeVarietas != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Varietas aktif: ${activeVarietas!.replaceAll('_', ' ').toUpperCase()}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1114,8 +891,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.orange,
                 _dbService.suhuStream(varietasToUse),
                 '°C',
-                25,
-                30,
+                suhuMin,
+                suhuMax,
               ),
             ),
             const SizedBox(width: 12),
@@ -1126,8 +903,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.blue,
                 _dbService.kelembapanUdaraStream(varietasToUse),
                 '%',
-                40,
-                80,
+                humMin,
+                humMax,
               ),
             ),
           ],
@@ -1142,8 +919,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.green,
                 _dbService.kelembapanTanahStream(varietasToUse),
                 'ADC',
-                1200,
-                2000,
+                soilMin,
+                soilMax,
               ),
             ),
             const SizedBox(width: 12),
@@ -1154,8 +931,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.yellow.shade700,
                 _dbService.cahayaStream(varietasToUse),
                 'Lux',
-                2000,
-                4095,
+                luxMin,
+                luxMax,
               ),
             ),
           ],
@@ -1170,8 +947,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.purple,
                 _dbService.phTanahStream(varietasToUse),
                 'pH',
-                5.5,
-                7.5,
+                phMin,
+                phMax,
               ),
             ),
             const SizedBox(width: 12),
