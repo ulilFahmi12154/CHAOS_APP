@@ -15,14 +15,66 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final confirmCtrl = TextEditingController();
   final auth = AuthService();
   bool loading = false;
+  // Live password criteria flags
+  bool _hasMinLen = false;
+  bool _hasUpperLower = false;
+  bool _hasDigit = false;
+  bool _hasSymbol = false;
+
+  void _updatePasswordIndicators(String password) {
+    setState(() {
+      _hasMinLen = password.length >= 8;
+      final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+      final hasLower = RegExp(r'[a-z]').hasMatch(password);
+      _hasUpperLower = hasUpper && hasLower;
+      _hasDigit = RegExp(r'\d').hasMatch(password);
+      _hasSymbol = RegExp(
+        r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;\"]',
+      ).hasMatch(password);
+    });
+  }
+
+  List<String> _passwordIssues(String password) {
+    final issues = <String>[];
+    if (password.length < 8) {
+      issues.add('• Minimal 8 karakter');
+    }
+    final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLower = RegExp(r'[a-z]').hasMatch(password);
+    if (!(hasUpper && hasLower)) {
+      issues.add('• Harus mengandung huruf besar dan huruf kecil');
+    }
+    final hasDigit = RegExp(r'\d').hasMatch(password);
+    if (!hasDigit) {
+      issues.add('• Harus mengandung angka (0-9)');
+    }
+    final hasSymbol = RegExp(
+      r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;\"]',
+    ).hasMatch(password);
+    if (!hasSymbol) {
+      issues.add('• Harus mengandung simbol (mis. !@#\$%^&*)');
+    }
+    return issues;
+  }
 
   void _submit() async {
     final p = passCtrl.text.trim();
     final c = confirmCtrl.text.trim();
+
+    // Validate password strength
+    final issues = _passwordIssues(p);
+    if (issues.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Password tidak valid:\n${issues.join('\n')}')),
+      );
+      return;
+    }
+
+    // Validate password confirmation
     if (p.isEmpty || c.isEmpty || p != c) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Periksa input')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konfirmasi sandi tidak cocok')),
+      );
       return;
     }
     if (widget.oobCode == null) {
@@ -138,8 +190,23 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       label: "Buat Sandi Baru",
                       icon: Icons.lock_outline,
                       obscure: true,
+                      onChanged: _updatePasswordIndicators,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
+                    _CriteriaRow(ok: _hasMinLen, text: 'Minimal 8 karakter'),
+                    _CriteriaRow(
+                      ok: _hasUpperLower,
+                      text: 'Harus mengandung huruf besar dan huruf kecil',
+                    ),
+                    _CriteriaRow(
+                      ok: _hasDigit,
+                      text: 'Harus mengandung angka (0-9)',
+                    ),
+                    _CriteriaRow(
+                      ok: _hasSymbol,
+                      text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
+                    ),
+                    const SizedBox(height: 15),
                     // Confirm password input
                     CustomInput(
                       controller: confirmCtrl,
@@ -185,5 +252,34 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     passCtrl.dispose();
     confirmCtrl.dispose();
     super.dispose();
+  }
+}
+
+class _CriteriaRow extends StatelessWidget {
+  final bool ok;
+  final String text;
+
+  const _CriteriaRow({required this.ok, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ok ? const Color(0xFF10B981) : Colors.redAccent;
+    final icon = ok ? Icons.check_circle : Icons.close_rounded;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
