@@ -34,17 +34,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Stream subscription untuk real-time updates
   StreamSubscription<Map<String, dynamic>?>? _settingsSubscription;
 
-  // Nilai ambang (editable via slider) - akan di-update dari Firestore
-  double suhuMin = 22, suhuMax = 28;
-  double suhu = 24;
-  double humMin = 50, humMax = 58;
-  double kelembapanUdara = 53;
-  double soilMin = 1100, soilMax = 1900;
-  double kelembapanTanah = 1500;
-  double phMin = 5.8, phMax = 6.5;
-  double phTanah = 6.0;
-  double luxMin = 19000, luxMax = 55000;
-  double intensitasCahaya = 22000;
+  // Nilai ambang batas (min/max range yang bisa di-edit user via RangeSlider)
+  // Ini adalah nilai CUSTOM user, bukan default dari Firestore
+  RangeValues suhuRange = const RangeValues(22, 28);
+  RangeValues kelembapanUdaraRange = const RangeValues(50, 58);
+  RangeValues kelembapanTanahRange = const RangeValues(1100, 1900);
+  RangeValues phTanahRange = const RangeValues(5.8, 6.5);
+  RangeValues intensitasCahayaRange = const RangeValues(19000, 55000);
+
+  // Batas absolut dari Firestore (untuk membatasi RangeSlider)
+  double suhuAbsMin = 20, suhuAbsMax = 30;
+  double humAbsMin = 40, humAbsMax = 70;
+  double soilAbsMin = 1000, soilAbsMax = 2000;
+  double phAbsMin = 5.0, phAbsMax = 7.0;
+  double luxAbsMin = 15000, luxAbsMax = 60000;
 
   // Loading state
   bool _isLoading = true;
@@ -148,42 +151,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final newLuxMax = (data['light_max'] ?? 4095).toDouble();
 
         setState(() {
-          // Set ranges baru
-          suhuMin = newSuhuMin;
-          suhuMax = newSuhuMax;
-          humMin = newHumMin;
-          humMax = newHumMax;
-          soilMin = newSoilMin;
-          soilMax = newSoilMax;
-          phMin = newPhMin;
-          phMax = newPhMax;
-          luxMin = newLuxMin;
-          luxMax = newLuxMax;
-
-          // Clamp nilai current agar dalam range baru
-          suhu = suhu.clamp(suhuMin, suhuMax);
-          kelembapanUdara = kelembapanUdara.clamp(humMin, humMax);
-          kelembapanTanah = kelembapanTanah.clamp(soilMin, soilMax);
-          phTanah = phTanah.clamp(phMin, phMax);
-          intensitasCahaya = intensitasCahaya.clamp(luxMin, luxMax);
+          // Set batas absolut dari Firestore (untuk RangeSlider limits)
+          suhuAbsMin = newSuhuMin;
+          suhuAbsMax = newSuhuMax;
+          humAbsMin = newHumMin;
+          humAbsMax = newHumMax;
+          soilAbsMin = newSoilMin;
+          soilAbsMax = newSoilMax;
+          phAbsMin = newPhMin;
+          phAbsMax = newPhMax;
+          luxAbsMin = newLuxMin;
+          luxAbsMax = newLuxMax;
         });
 
         // ignore: avoid_print
-        print('Loaded config for $varietasId:');
+        print('Loaded absolute limits for $varietasId:');
         // ignore: avoid_print
-        print('  Suhu: $suhuMin - $suhuMax (current: $suhu)');
+        print('  Suhu: $suhuAbsMin - $suhuAbsMax');
         // ignore: avoid_print
-        print(
-          '  Kelembapan Udara: $humMin - $humMax (current: $kelembapanUdara)',
-        );
+        print('  Kelembapan Udara: $humAbsMin - $humAbsMax');
         // ignore: avoid_print
-        print(
-          '  Kelembapan Tanah: $soilMin - $soilMax (current: $kelembapanTanah)',
-        );
+        print('  Kelembapan Tanah: $soilAbsMin - $soilAbsMax');
         // ignore: avoid_print
-        print('  pH: $phMin - $phMax (current: $phTanah)');
+        print('  pH: $phAbsMin - $phAbsMax');
         // ignore: avoid_print
-        print('  Cahaya: $luxMin - $luxMax (current: $intensitasCahaya)');
+        print('  Cahaya: $luxAbsMin - $luxAbsMax');
       }
     } catch (e) {
       // ignore: avoid_print
@@ -224,28 +216,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await _loadVarietasConfig(_selectedVarietas);
 
         setState(() {
-          // Load ambang batas
+          // Load ambang batas (min/max ranges yang user set)
           final ambangBatas =
               settings['ambang_batas'] as Map<dynamic, dynamic>?;
           if (ambangBatas != null) {
-            // Load values dan langsung clamp agar dalam range yang valid
-            suhu = (ambangBatas['suhu'] ?? 24).toDouble().clamp(
-              suhuMin,
-              suhuMax,
-            );
-            kelembapanUdara = (ambangBatas['kelembapan_udara'] ?? 53)
-                .toDouble()
-                .clamp(humMin, humMax);
-            kelembapanTanah = (ambangBatas['kelembapan_tanah'] ?? 1500)
-                .toDouble()
-                .clamp(soilMin, soilMax);
-            phTanah = (ambangBatas['ph_tanah'] ?? 6.0).toDouble().clamp(
-              phMin,
-              phMax,
-            );
-            intensitasCahaya = (ambangBatas['intensitas_cahaya'] ?? 22000)
-                .toDouble()
-                .clamp(luxMin, luxMax);
+            // Load suhu range
+            final suhuData = ambangBatas['suhu'];
+            if (suhuData is Map) {
+              final min = (suhuData['min'] ?? suhuAbsMin).toDouble();
+              final max = (suhuData['max'] ?? suhuAbsMax).toDouble();
+              suhuRange = RangeValues(min, max);
+            } else {
+              // Backward compatibility: jika masih nilai tunggal, use as midpoint
+              suhuRange = RangeValues(suhuAbsMin, suhuAbsMax);
+            }
+
+            // Load kelembapan udara range
+            final humData = ambangBatas['kelembapan_udara'];
+            if (humData is Map) {
+              final min = (humData['min'] ?? humAbsMin).toDouble();
+              final max = (humData['max'] ?? humAbsMax).toDouble();
+              kelembapanUdaraRange = RangeValues(min, max);
+            } else {
+              kelembapanUdaraRange = RangeValues(humAbsMin, humAbsMax);
+            }
+
+            // Load kelembapan tanah range
+            final soilData = ambangBatas['kelembapan_tanah'];
+            if (soilData is Map) {
+              final min = (soilData['min'] ?? soilAbsMin).toDouble();
+              final max = (soilData['max'] ?? soilAbsMax).toDouble();
+              kelembapanTanahRange = RangeValues(min, max);
+            } else {
+              kelembapanTanahRange = RangeValues(soilAbsMin, soilAbsMax);
+            }
+
+            // Load pH range
+            final phData = ambangBatas['ph_tanah'];
+            if (phData is Map) {
+              final min = (phData['min'] ?? phAbsMin).toDouble();
+              final max = (phData['max'] ?? phAbsMax).toDouble();
+              phTanahRange = RangeValues(min, max);
+            } else {
+              phTanahRange = RangeValues(phAbsMin, phAbsMax);
+            }
+
+            // Load intensitas cahaya range
+            final luxData = ambangBatas['intensitas_cahaya'];
+            if (luxData is Map) {
+              final min = (luxData['min'] ?? luxAbsMin).toDouble();
+              final max = (luxData['max'] ?? luxAbsMax).toDouble();
+              intensitasCahayaRange = RangeValues(min, max);
+            } else {
+              intensitasCahayaRange = RangeValues(luxAbsMin, luxAbsMax);
+            }
           }
 
           // Load notifikasi settings
@@ -261,15 +285,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         // Log untuk debugging
         print('Loaded user settings:');
-        print('  Suhu: $suhu (range: $suhuMin - $suhuMax)');
+        print('  Suhu: ${suhuRange.start} - ${suhuRange.end}');
         print(
-          '  Kelembapan Udara: $kelembapanUdara (range: $humMin - $humMax)',
+          '  Kelembapan Udara: ${kelembapanUdaraRange.start} - ${kelembapanUdaraRange.end}',
         );
         print(
-          '  Kelembapan Tanah: $kelembapanTanah (range: $soilMin - $soilMax)',
+          '  Kelembapan Tanah: ${kelembapanTanahRange.start} - ${kelembapanTanahRange.end}',
         );
-        print('  pH: $phTanah (range: $phMin - $phMax)');
-        print('  Cahaya: $intensitasCahaya (range: $luxMin - $luxMax)');
+        print('  pH: ${phTanahRange.start} - ${phTanahRange.end}');
+        print(
+          '  Cahaya: ${intensitasCahayaRange.start} - ${intensitasCahayaRange.end}',
+        );
+
+        // Sync threshold ke Wokwi
+        await _syncAllThresholdsToWokwi();
 
         // Setup real-time listener untuk notifikasi
         _setupRealtimeListener();
@@ -337,11 +366,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final defaultSettings = {
       'varietas': _selectedVarietas,
       'ambang_batas': {
-        'suhu': suhu,
-        'kelembapan_udara': kelembapanUdara,
-        'kelembapan_tanah': kelembapanTanah,
-        'ph_tanah': phTanah,
-        'intensitas_cahaya': intensitasCahaya,
+        'suhu': {'min': suhuRange.start, 'max': suhuRange.end},
+        'kelembapan_udara': {
+          'min': kelembapanUdaraRange.start,
+          'max': kelembapanUdaraRange.end,
+        },
+        'kelembapan_tanah': {
+          'min': kelembapanTanahRange.start,
+          'max': kelembapanTanahRange.end,
+        },
+        'ph_tanah': {'min': phTanahRange.start, 'max': phTanahRange.end},
+        'intensitas_cahaya': {
+          'min': intensitasCahayaRange.start,
+          'max': intensitasCahayaRange.end,
+        },
       },
       'notifikasi': {
         'enabled': notifEnabled,
@@ -359,34 +397,135 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _dbService.updateVarietas(_userId!, varietas);
   }
 
-  /// Update ambang suhu ke Firebase
-  Future<void> _updateSuhu(double value) async {
+  /// Update ambang suhu ke Firebase dan Wokwi (min dan max)
+  Future<void> _updateSuhu(RangeValues range) async {
     if (_userId == null) return;
-    await _dbService.updateAmbangSuhu(_userId!, value);
+    print('🔥 UPDATING SUHU: ${range.start} - ${range.end}');
+    // Update user settings
+    await _dbService.updateAmbangSuhu(_userId!, range.start, range.end);
+    // Sync ke Wokwi threshold untuk varietas aktif
+    if (_selectedVarietas.isNotEmpty) {
+      print('📡 Syncing to: smartfarm/threshold/$_selectedVarietas/suhu');
+      await FirebaseDatabase.instance
+          .ref('smartfarm/threshold/$_selectedVarietas/suhu')
+          .set({'min': range.start, 'max': range.end});
+      print('✅ Suhu synced to Wokwi');
+    }
   }
 
-  /// Update ambang kelembapan udara ke Firebase
-  Future<void> _updateKelembapanUdara(double value) async {
+  /// Update ambang kelembapan udara ke Firebase dan Wokwi (min dan max)
+  Future<void> _updateKelembapanUdara(RangeValues range) async {
     if (_userId == null) return;
-    await _dbService.updateAmbangKelembapanUdara(_userId!, value);
+    print('💧 UPDATING KELEMBAPAN UDARA: ${range.start} - ${range.end}');
+    // Update user settings
+    await _dbService.updateAmbangKelembapanUdara(
+      _userId!,
+      range.start,
+      range.end,
+    );
+    // Sync ke Wokwi threshold untuk varietas aktif
+    if (_selectedVarietas.isNotEmpty) {
+      print(
+        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/kelembapan_udara',
+      );
+      await FirebaseDatabase.instance
+          .ref('smartfarm/threshold/$_selectedVarietas/kelembapan_udara')
+          .set({'min': range.start, 'max': range.end});
+      print('✅ Kelembapan Udara synced to Wokwi');
+    }
   }
 
-  /// Update ambang kelembapan tanah ke Firebase
-  Future<void> _updateKelembapanTanah(double value) async {
+  /// Update ambang kelembapan tanah ke Firebase dan Wokwi (min dan max)
+  Future<void> _updateKelembapanTanah(RangeValues range) async {
     if (_userId == null) return;
-    await _dbService.updateAmbangKelembapanTanah(_userId!, value);
+    print('🌱 UPDATING KELEMBAPAN TANAH: ${range.start} - ${range.end}');
+    // Update user settings
+    await _dbService.updateAmbangKelembapanTanah(
+      _userId!,
+      range.start,
+      range.end,
+    );
+    // Sync ke Wokwi threshold untuk varietas aktif
+    if (_selectedVarietas.isNotEmpty) {
+      print(
+        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/kelembapan_tanah',
+      );
+      await FirebaseDatabase.instance
+          .ref('smartfarm/threshold/$_selectedVarietas/kelembapan_tanah')
+          .set({'min': range.start, 'max': range.end});
+      print('✅ Kelembapan Tanah synced to Wokwi');
+    }
   }
 
-  /// Update ambang pH tanah ke Firebase
-  Future<void> _updatePhTanah(double value) async {
+  /// Update ambang pH tanah ke Firebase dan Wokwi (min dan max)
+  Future<void> _updatePhTanah(RangeValues range) async {
     if (_userId == null) return;
-    await _dbService.updateAmbangPhTanah(_userId!, value);
+    print('🧪 UPDATING PH TANAH: ${range.start} - ${range.end}');
+    // Update user settings
+    await _dbService.updateAmbangPhTanah(_userId!, range.start, range.end);
+    // Sync ke Wokwi threshold untuk varietas aktif
+    if (_selectedVarietas.isNotEmpty) {
+      print('📡 Syncing to: smartfarm/threshold/$_selectedVarietas/ph_tanah');
+      await FirebaseDatabase.instance
+          .ref('smartfarm/threshold/$_selectedVarietas/ph_tanah')
+          .set({'min': range.start, 'max': range.end});
+      print('✅ pH Tanah synced to Wokwi');
+    }
   }
 
-  /// Update ambang intensitas cahaya ke Firebase
-  Future<void> _updateIntensitasCahaya(double value) async {
+  /// Update ambang intensitas cahaya ke Firebase dan Wokwi (min dan max)
+  Future<void> _updateIntensitasCahaya(RangeValues range) async {
     if (_userId == null) return;
-    await _dbService.updateAmbangIntensitasCahaya(_userId!, value);
+    print('☀️ UPDATING INTENSITAS CAHAYA: ${range.start} - ${range.end}');
+    // Update user settings
+    await _dbService.updateAmbangIntensitasCahaya(
+      _userId!,
+      range.start,
+      range.end,
+    );
+    // Sync ke Wokwi threshold untuk varietas aktif
+    if (_selectedVarietas.isNotEmpty) {
+      print(
+        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/intensitas_cahaya',
+      );
+      await FirebaseDatabase.instance
+          .ref('smartfarm/threshold/$_selectedVarietas/intensitas_cahaya')
+          .set({'min': range.start, 'max': range.end});
+      print('✅ Intensitas Cahaya synced to Wokwi');
+    }
+  }
+
+  /// Sync semua threshold ke Wokwi untuk varietas yang dipilih (min dan max)
+  Future<void> _syncAllThresholdsToWokwi() async {
+    if (_selectedVarietas.isEmpty) return;
+
+    try {
+      // Sync semua nilai threshold (min/max) ke path Wokwi
+      final thresholdRef = FirebaseDatabase.instance.ref(
+        'smartfarm/threshold/$_selectedVarietas',
+      );
+
+      await thresholdRef.set({
+        'suhu': {'min': suhuRange.start, 'max': suhuRange.end},
+        'kelembapan_udara': {
+          'min': kelembapanUdaraRange.start,
+          'max': kelembapanUdaraRange.end,
+        },
+        'kelembapan_tanah': {
+          'min': kelembapanTanahRange.start,
+          'max': kelembapanTanahRange.end,
+        },
+        'ph_tanah': {'min': phTanahRange.start, 'max': phTanahRange.end},
+        'intensitas_cahaya': {
+          'min': intensitasCahayaRange.start,
+          'max': intensitasCahayaRange.end,
+        },
+      });
+
+      print('✅ All thresholds synced to Wokwi for $_selectedVarietas');
+    } catch (e) {
+      print('❌ Error syncing thresholds to Wokwi: $e');
+    }
   }
 
   /// Update notifikasi enabled ke Firebase
@@ -554,6 +693,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               setState(() => _selectedVarietas = varietasId);
                               await _updateVarietas(varietasId);
 
+                              // 6. Sync threshold values ke Wokwi
+                              await _syncAllThresholdsToWokwi();
+
                               // Tampilkan sukses
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -679,28 +821,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(height: 16),
 
                       // Suhu
-                      _SliderIndicator(
+                      _RangeSliderIndicator(
                         icon: const Icon(
                           Icons.thermostat_outlined,
                           color: Color(0xFF234D2B),
                         ),
                         label: 'Suhu',
-                        minLabel: '${suhuMin.toStringAsFixed(0)}°C',
-                        maxLabel: '${suhuMax.toStringAsFixed(0)}°C',
-                        min: suhuMin,
-                        max: suhuMax,
-                        value: suhu,
-                        valueLabel: '${suhu.toStringAsFixed(0)}°C',
+                        absMinLabel: '${suhuAbsMin.toStringAsFixed(0)}°C',
+                        absMaxLabel: '${suhuAbsMax.toStringAsFixed(0)}°C',
+                        absMin: suhuAbsMin,
+                        absMax: suhuAbsMax,
+                        values: suhuRange,
+                        unit: '°C',
                         onChanged: (v) {
-                          setState(() => suhu = v);
+                          setState(() => suhuRange = v);
                           _updateSuhu(v);
                         },
-                        divisions: (suhuMax - suhuMin).toInt(),
+                        divisions: (suhuAbsMax - suhuAbsMin).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // Kelembapan Udara
-                      _SliderIndicator(
+                      _RangeSliderIndicator(
                         icon: Image.asset(
                           'assets/ikon/material-symbols_air.png',
                           width: 20,
@@ -714,44 +856,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                         ),
                         label: 'Kelembapan Udara',
-                        minLabel: '${humMin.toStringAsFixed(0)}%',
-                        maxLabel: '${humMax.toStringAsFixed(0)}%',
-                        min: humMin,
-                        max: humMax,
-                        value: kelembapanUdara,
-                        valueLabel: '${kelembapanUdara.toStringAsFixed(0)}%',
+                        absMinLabel: '${humAbsMin.toStringAsFixed(0)}%',
+                        absMaxLabel: '${humAbsMax.toStringAsFixed(0)}%',
+                        absMin: humAbsMin,
+                        absMax: humAbsMax,
+                        values: kelembapanUdaraRange,
+                        unit: '%',
                         onChanged: (v) {
-                          setState(() => kelembapanUdara = v);
+                          setState(() => kelembapanUdaraRange = v);
                           _updateKelembapanUdara(v);
                         },
-                        divisions: (humMax - humMin).toInt(),
+                        divisions: (humAbsMax - humAbsMin).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // Kelembapan Tanah
-                      _SliderIndicator(
+                      _RangeSliderIndicator(
                         icon: const Icon(
                           Icons.terrain,
                           color: Color(0xFF234D2B),
                           size: 20,
                         ),
                         label: 'Kelembapan Tanah',
-                        minLabel: soilMin.toStringAsFixed(0),
-                        maxLabel: soilMax.toStringAsFixed(0),
-                        min: soilMin,
-                        max: soilMax,
-                        value: kelembapanTanah,
-                        valueLabel: kelembapanTanah.toStringAsFixed(0),
+                        absMinLabel: soilAbsMin.toStringAsFixed(0),
+                        absMaxLabel: soilAbsMax.toStringAsFixed(0),
+                        absMin: soilAbsMin,
+                        absMax: soilAbsMax,
+                        values: kelembapanTanahRange,
+                        unit: '',
                         onChanged: (v) {
-                          setState(() => kelembapanTanah = v);
+                          setState(() => kelembapanTanahRange = v);
                           _updateKelembapanTanah(v);
                         },
-                        divisions: ((soilMax - soilMin) / 10).toInt(),
+                        divisions: ((soilAbsMax - soilAbsMin) / 10).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // pH Tanah
-                      _SliderIndicator(
+                      _RangeSliderIndicator(
                         icon: Image.asset(
                           'assets/ikon/game-icons_land-mine.png',
                           width: 20,
@@ -765,22 +907,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                         ),
                         label: 'pH Tanah',
-                        minLabel: phMin.toStringAsFixed(1),
-                        maxLabel: phMax.toStringAsFixed(1),
-                        min: phMin,
-                        max: phMax,
-                        value: phTanah,
-                        valueLabel: phTanah.toStringAsFixed(1),
+                        absMinLabel: phAbsMin.toStringAsFixed(1),
+                        absMaxLabel: phAbsMax.toStringAsFixed(1),
+                        absMin: phAbsMin,
+                        absMax: phAbsMax,
+                        values: phTanahRange,
+                        unit: '',
                         onChanged: (v) {
-                          setState(() => phTanah = v);
+                          setState(() => phTanahRange = v);
                           _updatePhTanah(v);
                         },
-                        divisions: 7, // ~0.1 step
+                        divisions: ((phAbsMax - phAbsMin) * 10).toInt(),
                       ),
                       const SizedBox(height: 14),
 
                       // Intensitas Cahaya
-                      _SliderIndicator(
+                      _RangeSliderIndicator(
                         icon: Image.asset(
                           'assets/ikon/cahaya.png',
                           width: 20,
@@ -794,16 +936,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                         ),
                         label: 'Intensitas Cahaya',
-                        minLabel: '${_formatNumber(luxMin)} lux',
-                        maxLabel: '${_formatNumber(luxMax)} lux',
-                        min: luxMin,
-                        max: luxMax,
-                        value: intensitasCahaya,
-                        valueLabel: _formatNumber(intensitasCahaya),
+                        absMinLabel: '${_formatNumber(luxAbsMin)} lux',
+                        absMaxLabel: '${_formatNumber(luxAbsMax)} lux',
+                        absMin: luxAbsMin,
+                        absMax: luxAbsMax,
+                        values: intensitasCahayaRange,
+                        unit: ' lux',
                         onChanged: (v) {
-                          setState(() => intensitasCahaya = v);
+                          setState(() => intensitasCahayaRange = v);
                           _updateIntensitasCahaya(v);
                         },
+                        divisions: ((luxAbsMax - luxAbsMin) / 1000).toInt(),
                       ),
                     ],
                   ),
@@ -1225,16 +1368,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // Versi interaktif: slider tipis + label nilai + min/max
-  Widget _SliderIndicator({
+  Widget _RangeSliderIndicator({
     required Widget icon,
     required String label,
-    required String minLabel,
-    required String maxLabel,
-    required double min,
-    required double max,
-    required double value,
-    required String valueLabel,
-    required ValueChanged<double> onChanged,
+    required String absMinLabel,
+    required String absMaxLabel,
+    required double absMin,
+    required double absMax,
+    required RangeValues values,
+    required String unit,
+    required ValueChanged<RangeValues> onChanged,
     int? divisions,
   }) {
     return Column(
@@ -1257,7 +1400,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                valueLabel,
+                '${_formatNumber(values.start)} - ${_formatNumber(values.end)}$unit',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
@@ -1269,13 +1412,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trackHeight: 4,
             inactiveTrackColor: Colors.grey.shade300,
             activeTrackColor: const Color(0xFF2E7D32),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            rangeThumbShape: const RoundRangeSliderThumbShape(
+              enabledThumbRadius: 8,
+            ),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
-          child: Slider(
-            value: value,
-            min: min,
-            max: max,
+          child: RangeSlider(
+            values: values,
+            min: absMin,
+            max: absMax,
             divisions: divisions,
             onChanged: onChanged,
           ),
@@ -1283,8 +1428,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(minLabel, style: const TextStyle(color: Colors.black54)),
-            Text(maxLabel, style: const TextStyle(color: Colors.black45)),
+            Text(absMinLabel, style: const TextStyle(color: Colors.black54)),
+            Text(absMaxLabel, style: const TextStyle(color: Colors.black45)),
           ],
         ),
       ],
