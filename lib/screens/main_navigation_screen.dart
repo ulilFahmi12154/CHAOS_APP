@@ -1,50 +1,48 @@
 import 'package:flutter/material.dart';
-import '../screens/kontrol_screen.dart';
-import '../screens/history_screen.dart';
-import '../screens/home_screen.dart';
-import '../screens/settings_screen.dart';
-import '../screens/profile_screen.dart';
+import 'kontrol_screen.dart';
+import 'history_screen.dart';
+import 'home_screen.dart';
+import 'settings_screen.dart';
+import 'profile_screen.dart';
 
-/// Template scaffold dengan app bar dan bottom navigation
-/// yang bisa digunakan di semua halaman utama
-class AppScaffold extends StatefulWidget {
-  final Widget body;
-  final int currentIndex;
+/// Screen utama dengan bottom navigation yang statis
+/// Hanya konten yang berubah, navigation bar tetap
+class MainNavigationScreen extends StatefulWidget {
+  final int initialIndex;
 
-  const AppScaffold({
+  const MainNavigationScreen({
     super.key,
-    required this.body,
-    required this.currentIndex,
+    this.initialIndex = 2, // Default ke Dashboard
   });
 
   @override
-  State<AppScaffold> createState() => _AppScaffoldState();
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _AppScaffoldState extends State<AppScaffold> {
-  // Cache untuk menyimpan instance screen agar tidak rebuild terus
-  static final Map<int, Widget> _cachedScreens = {};
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  late int _currentIndex;
+
+  // List semua screen
+  final List<Widget> _screens = [
+    const KontrolScreen(),
+    const HistoryScreen(),
+    const HomeScreen(),
+    const SettingsScreen(),
+    const ProfileScreen(),
+  ];
 
   @override
   void initState() {
     super.initState();
-    // Preload semua screen saat pertama kali
-    _preloadScreens();
+    _currentIndex = widget.initialIndex;
   }
 
-  void _preloadScreens() {
-    // Cache semua screen untuk navigasi instant
-    if (_cachedScreens.isEmpty) {
-      _cachedScreens[0] = const KontrolScreen();
-      _cachedScreens[1] = const HistoryScreen();
-      _cachedScreens[2] = const HomeScreen();
-      _cachedScreens[3] = const SettingsScreen();
-      _cachedScreens[4] = const ProfileScreen();
+  void _onTabTapped(int index) {
+    if (_currentIndex != index) {
+      setState(() {
+        _currentIndex = index;
+      });
     }
-  }
-
-  Widget _getScreen(int index) {
-    return _cachedScreens[index] ?? const HomeScreen();
   }
 
   @override
@@ -80,7 +78,9 @@ class _AppScaffoldState extends State<AppScaffold> {
           ),
         ],
       ),
-      body: widget.body,
+      body: SafeArea(
+        child: IndexedStack(index: _currentIndex, children: _screens),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1B5E20),
@@ -99,31 +99,22 @@ class _AppScaffoldState extends State<AppScaffold> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(
-                  context,
                   icon: Icons.toggle_on_outlined,
                   label: 'Kontrol',
                   index: 0,
                 ),
+                _buildNavItem(icon: Icons.history, label: 'Histori', index: 1),
                 _buildNavItem(
-                  context,
-                  icon: Icons.history,
-                  label: 'Histori',
-                  index: 1,
-                ),
-                _buildNavItem(
-                  context,
                   icon: Icons.dashboard_outlined,
                   label: 'Dashboard',
                   index: 2,
                 ),
                 _buildNavItem(
-                  context,
                   icon: Icons.settings_outlined,
                   label: 'Pengaturan',
                   index: 3,
                 ),
                 _buildNavItem(
-                  context,
                   icon: Icons.person_outline,
                   label: 'Profile',
                   index: 4,
@@ -136,17 +127,17 @@ class _AppScaffoldState extends State<AppScaffold> {
     );
   }
 
-  Widget _buildNavItem(
-    BuildContext context, {
+  Widget _buildNavItem({
     required IconData icon,
     required String label,
     required int index,
   }) {
-    final isActive = widget.currentIndex == index;
+    final isActive = _currentIndex == index;
     return InkWell(
-      onTap: () => _navigateTo(context, index),
+      onTap: () => _onTabTapped(index),
       borderRadius: BorderRadius.circular(12),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isActive ? Colors.white.withOpacity(0.2) : Colors.transparent,
@@ -171,41 +162,6 @@ class _AppScaffoldState extends State<AppScaffold> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _navigateTo(BuildContext context, int index) {
-    if (index == widget.currentIndex) return;
-
-    // Navigasi instant dengan cached screen - tidak ada loading
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) {
-          // Gunakan cached screen untuk instant loading
-          return _getScreen(index);
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Transisi sangat cepat untuk navigasi instant
-          const curve = Curves.easeOut;
-
-          var fadeAnimation = Tween(
-            begin: 0.0,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: animation, curve: curve));
-
-          var scaleAnimation = Tween(
-            begin: 0.98,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: animation, curve: curve));
-
-          return FadeTransition(
-            opacity: fadeAnimation,
-            child: ScaleTransition(scale: scaleAnimation, child: child),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 180),
-        reverseTransitionDuration: const Duration(milliseconds: 150),
       ),
     );
   }

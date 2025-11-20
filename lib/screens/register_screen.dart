@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import 'main_navigation_screen.dart';
 import '../widgets/custom_input.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -84,7 +84,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const MainNavigationScreen(initialIndex: 2),
+          ),
         );
       }
     } catch (e) {

@@ -3,7 +3,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../widgets/app_scaffold.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -322,160 +321,157 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      currentIndex: 1,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.green))
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator(color: Colors.green))
+        : SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
 
-                  // Title
-                  const Text(
-                    'Data Historis Tanaman',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D5F40),
+                // Title
+                const Text(
+                  'Data Historis Tanaman',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D5F40),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Varietas: ${_activeVarietas ?? '-'}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Data Type Grid (2 x 2)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    childAspectRatio: 2.8,
+                    children: [
+                      _buildDataTypeTab('Kelembapan\nTanah', 0),
+                      _buildDataTypeTab('Suhu\nUdara', 1),
+                      _buildDataTypeTab('Intensitas\nCahaya', 2),
+                      _buildDataTypeTab('Kelembapan\nUdara', 3),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Time Filter Choice Chips
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildTimeFilterChips(),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Chart Container
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Varietas: ${_activeVarietas ?? '-'}',
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Data Type Grid (2 x 2)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: 2.8,
+                    child: Column(
                       children: [
-                        _buildDataTypeTab('Kelembapan\nTanah', 0),
-                        _buildDataTypeTab('Suhu\nUdara', 1),
-                        _buildDataTypeTab('Intensitas\nCahaya', 2),
-                        _buildDataTypeTab('Kelembapan\nUdara', 3),
+                        // Chart (clipped and zoomable via InteractiveViewer)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            height: 250,
+                            child: InteractiveViewer(
+                              transformationController: _zoomController,
+                              minScale: 1.0,
+                              maxScale: 5.0,
+                              boundaryMargin: const EdgeInsets.all(24),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8.0,
+                                ),
+                                child: _buildChart(),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Reset zoom button
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () =>
+                                _zoomController.value = Matrix4.identity(),
+                            icon: const Icon(Icons.zoom_out_map, size: 16),
+                            label: const Text('Reset Zoom'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              foregroundColor: const Color(0xFF2D5F40),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+                        // Statistics row (average, max, min)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Rata-rata: ${_average.toStringAsFixed(0)}${_unitSuffix()}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Maks: ${_max.toStringAsFixed(0)}${_unitSuffix()}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                Text(
+                                  'Min: ${_min.toStringAsFixed(0)}${_unitSuffix()}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 16),
-
-                  // Time Filter Choice Chips
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _buildTimeFilterChips(),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Chart Container
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          // Chart (clipped and zoomable via InteractiveViewer)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            clipBehavior: Clip.hardEdge,
-                            child: SizedBox(
-                              height: 250,
-                              child: InteractiveViewer(
-                                transformationController: _zoomController,
-                                minScale: 1.0,
-                                maxScale: 5.0,
-                                boundaryMargin: const EdgeInsets.all(24),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8.0,
-                                  ),
-                                  child: _buildChart(),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // Reset zoom button
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () =>
-                                  _zoomController.value = Matrix4.identity(),
-                              icon: const Icon(Icons.zoom_out_map, size: 16),
-                              label: const Text('Reset Zoom'),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                foregroundColor: const Color(0xFF2D5F40),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-                          // Statistics row (average, max, min)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Rata-rata: ${_average.toStringAsFixed(0)}${_unitSuffix()}',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Maks: ${_max.toStringAsFixed(0)}${_unitSuffix()}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Min: ${_min.toStringAsFixed(0)}${_unitSuffix()}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 100),
-                ],
-              ),
+                const SizedBox(height: 100),
+              ],
             ),
-    );
+          );
   }
 
   Widget _buildDataTypeTab(String text, int index) {

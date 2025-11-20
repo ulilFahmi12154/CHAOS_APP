@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import 'main_navigation_screen.dart';
 import 'register_screen.dart';
 import '../widgets/custom_input.dart';
 import 'forgot_password_screen.dart';
@@ -25,7 +25,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const MainNavigationScreen(initialIndex: 2),
+          ),
         );
       }
     } catch (e) {
@@ -72,129 +74,131 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(40),
-                ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
               ),
               child: SingleChildScrollView(
-                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 28),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  // Small centered logo inside the sheet
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        height: 64,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                          Icons.agriculture,
-                          size: 64,
-                          color: Colors.green,
+                    // Small centered logo inside the sheet
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          height: 64,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.agriculture,
+                                size: 64,
+                                color: Colors.green,
+                              ),
                         ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Column(
-                      children: const [
-                        Text(
-                          "Selamat datang !",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          "Masuk ke Akun Anda",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 15),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  CustomInput(
-                    controller: emailCtrl,
-                    label: "Masukkan Email",
-                    icon: Icons.email_outlined,
-                  ),
-                  const SizedBox(height: 15),
-                  CustomInput(
-                    controller: passCtrl,
-                    label: "Masukkan Sandi",
-                    icon: Icons.lock_outline,
-                    obscure: true,
-                  ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                       MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
-                     ),
-                      child: const Text(
-                        "Lupa Sandi ?",
-                        style: TextStyle(color: Colors.green),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1B5E20),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            minimumSize: const Size(double.infinity, 50),
-                          ),
-                          onPressed: _login,
-                          child: const Text(
-                            "Masuk",
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Column(
+                        children: const [
+                          Text(
+                            "Selamat datang !",
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            "Masuk ke Akun Anda",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    CustomInput(
+                      controller: emailCtrl,
+                      label: "Masukkan Email",
+                      icon: Icons.email_outlined,
+                    ),
+                    const SizedBox(height: 15),
+                    CustomInput(
+                      controller: passCtrl,
+                      label: "Masukkan Sandi",
+                      icon: Icons.lock_outline,
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
+                          ),
+                        ),
+                        child: const Text(
+                          "Lupa Sandi ?",
+                          style: TextStyle(color: Colors.green),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B5E20),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                              minimumSize: const Size(double.infinity, 50),
+                            ),
+                            onPressed: _login,
+                            child: const Text(
+                              "Masuk",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          "Belum punya akun? ",
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RegisterScreen(),
+                            ),
+                          ),
+                          child: const Text(
+                            "Daftar sekarang",
+                            style: TextStyle(
+                              color: Colors.green,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        "Belum punya akun? ",
-                        style: TextStyle(color: Colors.black54),
-                      ),
-                      GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const RegisterScreen(),
-                          ),
-                        ),
-                        child: const Text(
-                          "Daftar sekarang",
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                   ],
                 ), // end Column (inside SingleChildScrollView)
               ), // end SingleChildScrollView

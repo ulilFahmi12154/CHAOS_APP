@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_scaffold.dart';
 import '../services/auth_service.dart';
 import '../services/realtime_db_service.dart';
 
@@ -665,769 +664,754 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-        ),
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
       );
     }
-    return AppScaffold(
-      currentIndex: 3,
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 24),
-              const Text(
-                'Pengaturan Sistem',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF234D2B),
-                ),
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 24),
+            const Text(
+              'Pengaturan Sistem',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF234D2B),
               ),
-              const SizedBox(height: 24),
-              // Varietas yang ditanam saat ini
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Image.asset(
-                            'assets/ikon/cabai.png',
-                            width: 20,
-                            height: 20,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(
-                                  Icons.local_fire_department,
-                                  color: Color(0xFF234D2B),
-                                  size: 20,
-                                ),
+            ),
+            const SizedBox(height: 24),
+            // Varietas yang ditanam saat ini
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Image.asset(
+                          'assets/ikon/cabai.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.local_fire_department,
+                                color: Color(0xFF234D2B),
+                                size: 20,
+                              ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Varietas yang ditanam saat ini',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Varietas yang ditanam saat ini',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      InkWell(
-                        key: _varietasFieldKey,
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () async {
-                          final selected = await _showVarietasMenu(context);
-                          if (selected != null) {
-                            // Konversi nama varietas ke ID (lowercase dengan underscore)
-                            final varietasId = selected
-                                .toLowerCase()
-                                .replaceAll(' ', '_');
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    InkWell(
+                      key: _varietasFieldKey,
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final selected = await _showVarietasMenu(context);
+                        if (selected != null) {
+                          // Konversi nama varietas ke ID (lowercase dengan underscore)
+                          final varietasId = selected.toLowerCase().replaceAll(
+                            ' ',
+                            '_',
+                          );
 
-                            try {
-                              // Tampilkan loading
+                          try {
+                            // Tampilkan loading
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text('Mengubah varietas & sync config...'),
+                                  ],
+                                ),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+
+                            // 1. Load config varietas dari Firestore
+                            final docSnapshot = await _firestore
+                                .collection('varietas_config')
+                                .doc(varietasId)
+                                .get();
+
+                            if (!docSnapshot.exists) {
+                              throw Exception('Data varietas tidak ditemukan');
+                            }
+
+                            final data = docSnapshot.data()!;
+
+                            // 2. Sync config ke Realtime Database untuk ESP32/Wokwi
+                            await FirebaseDatabase.instance
+                                .ref('smartfarm/varietas_config/$varietasId')
+                                .set({
+                                  'soil_min': data['soil_min'] ?? 1100,
+                                  'soil_max': data['soil_max'] ?? 1900,
+                                  'suhu_min': data['suhu_min'] ?? 22,
+                                  'suhu_max': data['suhu_max'] ?? 28,
+                                  'kelembapan_udara_min':
+                                      data['kelembapan_udara_min'] ?? 50,
+                                  'kelembapan_udara_max':
+                                      data['kelembapan_udara_max'] ?? 58,
+                                  'light_min': data['light_min'] ?? 1800,
+                                  'light_max': data['light_max'] ?? 4095,
+                                  'ph_min': data['ph_min'] ?? 5.8,
+                                  'ph_max': data['ph_max'] ?? 6.5,
+                                  'nama': data['nama'] ?? varietasId,
+                                });
+
+                            // 3. Update active_varietas global untuk ESP32
+                            await FirebaseDatabase.instance
+                                .ref('smartfarm/active_varietas')
+                                .set(varietasId);
+
+                            // 4. Load config ke UI
+                            await _loadVarietasConfig(varietasId);
+
+                            // 5. Update user settings
+                            setState(() => _selectedVarietas = varietasId);
+                            await _updateVarietas(varietasId);
+
+                            // 6. Sync threshold values ke Wokwi
+                            await _syncAllThresholdsToWokwi();
+
+                            // Tampilkan sukses
+                            if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Row(
                                     children: [
-                                      SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
-                                        ),
+                                      const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.white,
                                       ),
-                                      SizedBox(width: 12),
-                                      Text(
-                                        'Mengubah varietas & sync config...',
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          '✅ Varietas berhasil di-sync ke Wokwi!\n${varietasId.replaceAll('_', ' ').toUpperCase()}',
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  duration: Duration(seconds: 2),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
                                 ),
                               );
-
-                              // 1. Load config varietas dari Firestore
-                              final docSnapshot = await _firestore
-                                  .collection('varietas_config')
-                                  .doc(varietasId)
-                                  .get();
-
-                              if (!docSnapshot.exists) {
-                                throw Exception(
-                                  'Data varietas tidak ditemukan',
-                                );
-                              }
-
-                              final data = docSnapshot.data()!;
-
-                              // 2. Sync config ke Realtime Database untuk ESP32/Wokwi
-                              await FirebaseDatabase.instance
-                                  .ref('smartfarm/varietas_config/$varietasId')
-                                  .set({
-                                    'soil_min': data['soil_min'] ?? 1100,
-                                    'soil_max': data['soil_max'] ?? 1900,
-                                    'suhu_min': data['suhu_min'] ?? 22,
-                                    'suhu_max': data['suhu_max'] ?? 28,
-                                    'kelembapan_udara_min':
-                                        data['kelembapan_udara_min'] ?? 50,
-                                    'kelembapan_udara_max':
-                                        data['kelembapan_udara_max'] ?? 58,
-                                    'light_min': data['light_min'] ?? 1800,
-                                    'light_max': data['light_max'] ?? 4095,
-                                    'ph_min': data['ph_min'] ?? 5.8,
-                                    'ph_max': data['ph_max'] ?? 6.5,
-                                    'nama': data['nama'] ?? varietasId,
-                                  });
-
-                              // 3. Update active_varietas global untuk ESP32
-                              await FirebaseDatabase.instance
-                                  .ref('smartfarm/active_varietas')
-                                  .set(varietasId);
-
-                              // 4. Load config ke UI
-                              await _loadVarietasConfig(varietasId);
-
-                              // 5. Update user settings
-                              setState(() => _selectedVarietas = varietasId);
-                              await _updateVarietas(varietasId);
-
-                              // 6. Sync threshold values ke Wokwi
-                              await _syncAllThresholdsToWokwi();
-
-                              // Tampilkan sukses
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Row(
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('❌ Gagal sync: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: const Color(0xFF2D5F40),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide.none,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide.none,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: _selectedVarietas.isEmpty
+                                  ? Row(
                                       children: [
-                                        const Icon(
-                                          Icons.check_circle,
-                                          color: Colors.white,
+                                        Icon(
+                                          Icons.info_outline,
+                                          color: Colors.white.withOpacity(0.7),
+                                          size: 18,
                                         ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
+                                        const SizedBox(width: 8),
+                                        const Expanded(
                                           child: Text(
-                                            '✅ Varietas berhasil di-sync ke Wokwi!\n${varietasId.replaceAll('_', ' ').toUpperCase()}',
+                                            'Belum ada varietas yang dipilih',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontStyle: FontStyle.italic,
+                                              fontSize: 13,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                       ],
-                                    ),
-                                    backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 3),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('❌ Gagal sync: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: const Color(0xFF2D5F40),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide.none,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide.none,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: _selectedVarietas.isEmpty
-                                    ? Row(
-                                        children: [
-                                          Icon(
-                                            Icons.info_outline,
-                                            color: Colors.white.withOpacity(
-                                              0.7,
-                                            ),
-                                            size: 18,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Expanded(
-                                            child: Text(
-                                              'Belum ada varietas yang dipilih',
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontStyle: FontStyle.italic,
-                                                fontSize: 13,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : Text(
-                                        _getVarietasDisplayName(
-                                          _selectedVarietas,
-                                        ),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                    )
+                                  : Text(
+                                      _getVarietasDisplayName(
+                                        _selectedVarietas,
                                       ),
-                              ),
-                              const Icon(
-                                Icons.keyboard_arrow_down,
-                                color: Colors.white,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Ambang Batas Optimal
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Ambang Batas Optimal',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFF2E7D32),
-                              ),
-                            ),
-                            child: Text(
-                              _getVarietasDisplayName(_selectedVarietas),
-                              style: const TextStyle(
-                                color: Color(0xFF2E7D32),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Suhu
-                      _RangeSliderIndicator(
-                        icon: const Icon(
-                          Icons.thermostat_outlined,
-                          color: Color(0xFF234D2B),
-                        ),
-                        label: 'Suhu',
-                        absMinLabel: '${suhuAbsMin.toStringAsFixed(0)}°C',
-                        absMaxLabel: '${suhuAbsMax.toStringAsFixed(0)}°C',
-                        absMin: suhuAbsMin,
-                        absMax: suhuAbsMax,
-                        values: suhuRange,
-                        unit: '°C',
-                        onChanged: (v) {
-                          setState(() => suhuRange = v);
-                          _updateSuhu(v);
-                        },
-                        divisions: (suhuAbsMax - suhuAbsMin).toInt(),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Kelembapan Udara
-                      _RangeSliderIndicator(
-                        icon: Image.asset(
-                          'assets/ikon/material-symbols_air.png',
-                          width: 20,
-                          height: 20,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                                Icons.water_drop_outlined,
-                                color: Color(0xFF234D2B),
-                                size: 20,
-                              ),
-                        ),
-                        label: 'Kelembapan Udara',
-                        absMinLabel: '${humAbsMin.toStringAsFixed(0)}%',
-                        absMaxLabel: '${humAbsMax.toStringAsFixed(0)}%',
-                        absMin: humAbsMin,
-                        absMax: humAbsMax,
-                        values: kelembapanUdaraRange,
-                        unit: '%',
-                        onChanged: (v) {
-                          setState(() => kelembapanUdaraRange = v);
-                          _updateKelembapanUdara(v);
-                        },
-                        divisions: (humAbsMax - humAbsMin).toInt(),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Kelembapan Tanah
-                      _RangeSliderIndicator(
-                        icon: const Icon(
-                          Icons.terrain,
-                          color: Color(0xFF234D2B),
-                          size: 20,
-                        ),
-                        label: 'Kelembapan Tanah',
-                        absMinLabel: soilAbsMin.toStringAsFixed(0),
-                        absMaxLabel: soilAbsMax.toStringAsFixed(0),
-                        absMin: soilAbsMin,
-                        absMax: soilAbsMax,
-                        values: kelembapanTanahRange,
-                        unit: '',
-                        onChanged: (v) {
-                          setState(() => kelembapanTanahRange = v);
-                          _updateKelembapanTanah(v);
-                        },
-                        divisions: ((soilAbsMax - soilAbsMin) / 10).toInt(),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // pH Tanah
-                      _RangeSliderIndicator(
-                        icon: Image.asset(
-                          'assets/ikon/game-icons_land-mine.png',
-                          width: 20,
-                          height: 20,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                                Icons.grass_outlined,
-                                color: Color(0xFF234D2B),
-                                size: 20,
-                              ),
-                        ),
-                        label: 'pH Tanah',
-                        absMinLabel: phAbsMin.toStringAsFixed(1),
-                        absMaxLabel: phAbsMax.toStringAsFixed(1),
-                        absMin: phAbsMin,
-                        absMax: phAbsMax,
-                        values: phTanahRange,
-                        unit: '',
-                        onChanged: (v) {
-                          setState(() => phTanahRange = v);
-                          _updatePhTanah(v);
-                        },
-                        divisions: ((phAbsMax - phAbsMin) * 10).toInt(),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Intensitas Cahaya
-                      _RangeSliderIndicator(
-                        icon: Image.asset(
-                          'assets/ikon/cahaya.png',
-                          width: 20,
-                          height: 20,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                                Icons.wb_sunny_outlined,
-                                color: Color(0xFF234D2B),
-                                size: 20,
-                              ),
-                        ),
-                        label: 'Intensitas Cahaya',
-                        absMinLabel: '${_formatNumber(luxAbsMin)} lux',
-                        absMaxLabel: '${_formatNumber(luxAbsMax)} lux',
-                        absMin: luxAbsMin,
-                        absMax: luxAbsMax,
-                        values: intensitasCahayaRange,
-                        unit: ' lux',
-                        onChanged: (v) {
-                          setState(() => intensitasCahayaRange = v);
-                          _updateIntensitasCahaya(v);
-                        },
-                        divisions: ((luxAbsMax - luxAbsMin) / 1000).toInt(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Notifikasi
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Notifikasi',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Aktifkan notifikasi aplikasi',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          Switch(
-                            value: notifEnabled,
-                            activeColor: Colors.white,
-                            activeTrackColor: Colors.green,
-                            onChanged: (v) {
-                              setState(() => notifEnabled = v);
-                              _updateNotifikasiEnabled(v);
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Keep only two notification options: Pump status and critical plant alerts
-                      _notifTile(
-                        'Notifikasi Status Pompa Irigasi',
-                        notifSiklus,
-                        (v) {
-                          setState(() => notifSiklus = v ?? false);
-                          _updateNotifikasiPompa(v ?? false);
-                        },
-                      ),
-                      _notifTile('Notifikasi Tanaman Kritis', notifKritis, (v) {
-                        setState(() => notifKritis = v ?? false);
-                        _updateNotifikasiKritis(v ?? false);
-                      }),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Ubah kata sandi
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 1,
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.lock_outline,
-                    color: Color(0xFF234D2B),
-                  ),
-                  title: const Text(
-                    'Ubah kata sandi',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-                  onTap: () async {
-                    final oldPasswordController = TextEditingController();
-                    final newPasswordController = TextEditingController();
-                    final confirmPasswordController = TextEditingController();
-                    bool showOldPassword = false;
-                    bool showNewPassword = false;
-                    bool showConfirmPassword = false;
-
-                    final result = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => StatefulBuilder(
-                        builder: (context, setState) => AlertDialog(
-                          title: const Text('Ubah Kata Sandi'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextField(
-                                controller: oldPasswordController,
-                                obscureText: !showOldPassword,
-                                decoration: InputDecoration(
-                                  labelText: 'Kata Sandi Lama',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      showOldPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    onPressed: () {
-                                      setState(() {
-                                        showOldPassword = !showOldPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: newPasswordController,
-                                obscureText: !showNewPassword,
-                                decoration: InputDecoration(
-                                  labelText: 'Kata Sandi Baru',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      showNewPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        showNewPassword = !showNewPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: confirmPasswordController,
-                                obscureText: !showConfirmPassword,
-                                decoration: InputDecoration(
-                                  labelText: 'Konfirmasi Kata Sandi Baru',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      showConfirmPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        showConfirmPassword =
-                                            !showConfirmPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Batal'),
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Simpan'),
+                            const Icon(
+                              Icons.keyboard_arrow_down,
+                              color: Colors.white,
                             ),
                           ],
                         ),
                       ),
-                    );
-
-                    if (result == true) {
-                      final oldPassword = oldPasswordController.text.trim();
-                      final newPassword = newPasswordController.text.trim();
-                      final confirmPassword = confirmPasswordController.text
-                          .trim();
-
-                      if (newPassword != confirmPassword) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Kata sandi baru tidak cocok'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      try {
-                        final authService = AuthService();
-                        await authService.changePassword(
-                          oldPassword,
-                          newPassword,
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Kata sandi berhasil diubah'),
-                          ),
-                        );
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Gagal mengubah kata sandi: ${e.toString()}',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Ambang Batas Optimal
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Ambang Batas Optimal',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
                             ),
                           ),
-                        );
-                      }
-                    }
-                  },
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF2E7D32)),
+                          ),
+                          child: Text(
+                            _getVarietasDisplayName(_selectedVarietas),
+                            style: const TextStyle(
+                              color: Color(0xFF2E7D32),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Suhu
+                    _RangeSliderIndicator(
+                      icon: const Icon(
+                        Icons.thermostat_outlined,
+                        color: Color(0xFF234D2B),
+                      ),
+                      label: 'Suhu',
+                      absMinLabel: '${suhuAbsMin.toStringAsFixed(0)}°C',
+                      absMaxLabel: '${suhuAbsMax.toStringAsFixed(0)}°C',
+                      absMin: suhuAbsMin,
+                      absMax: suhuAbsMax,
+                      values: suhuRange,
+                      unit: '°C',
+                      onChanged: (v) {
+                        setState(() => suhuRange = v);
+                        _updateSuhu(v);
+                      },
+                      divisions: (suhuAbsMax - suhuAbsMin).toInt(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Kelembapan Udara
+                    _RangeSliderIndicator(
+                      icon: Image.asset(
+                        'assets/ikon/material-symbols_air.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.water_drop_outlined,
+                              color: Color(0xFF234D2B),
+                              size: 20,
+                            ),
+                      ),
+                      label: 'Kelembapan Udara',
+                      absMinLabel: '${humAbsMin.toStringAsFixed(0)}%',
+                      absMaxLabel: '${humAbsMax.toStringAsFixed(0)}%',
+                      absMin: humAbsMin,
+                      absMax: humAbsMax,
+                      values: kelembapanUdaraRange,
+                      unit: '%',
+                      onChanged: (v) {
+                        setState(() => kelembapanUdaraRange = v);
+                        _updateKelembapanUdara(v);
+                      },
+                      divisions: (humAbsMax - humAbsMin).toInt(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Kelembapan Tanah
+                    _RangeSliderIndicator(
+                      icon: const Icon(
+                        Icons.terrain,
+                        color: Color(0xFF234D2B),
+                        size: 20,
+                      ),
+                      label: 'Kelembapan Tanah',
+                      absMinLabel: soilAbsMin.toStringAsFixed(0),
+                      absMaxLabel: soilAbsMax.toStringAsFixed(0),
+                      absMin: soilAbsMin,
+                      absMax: soilAbsMax,
+                      values: kelembapanTanahRange,
+                      unit: '',
+                      onChanged: (v) {
+                        setState(() => kelembapanTanahRange = v);
+                        _updateKelembapanTanah(v);
+                      },
+                      divisions: ((soilAbsMax - soilAbsMin) / 10).toInt(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // pH Tanah
+                    _RangeSliderIndicator(
+                      icon: Image.asset(
+                        'assets/ikon/game-icons_land-mine.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.grass_outlined,
+                              color: Color(0xFF234D2B),
+                              size: 20,
+                            ),
+                      ),
+                      label: 'pH Tanah',
+                      absMinLabel: phAbsMin.toStringAsFixed(1),
+                      absMaxLabel: phAbsMax.toStringAsFixed(1),
+                      absMin: phAbsMin,
+                      absMax: phAbsMax,
+                      values: phTanahRange,
+                      unit: '',
+                      onChanged: (v) {
+                        setState(() => phTanahRange = v);
+                        _updatePhTanah(v);
+                      },
+                      divisions: ((phAbsMax - phAbsMin) * 10).toInt(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Intensitas Cahaya
+                    _RangeSliderIndicator(
+                      icon: Image.asset(
+                        'assets/ikon/cahaya.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.wb_sunny_outlined,
+                              color: Color(0xFF234D2B),
+                              size: 20,
+                            ),
+                      ),
+                      label: 'Intensitas Cahaya',
+                      absMinLabel: '${_formatNumber(luxAbsMin)} lux',
+                      absMaxLabel: '${_formatNumber(luxAbsMax)} lux',
+                      absMin: luxAbsMin,
+                      absMax: luxAbsMax,
+                      values: intensitasCahayaRange,
+                      unit: ' lux',
+                      onChanged: (v) {
+                        setState(() => intensitasCahayaRange = v);
+                        _updateIntensitasCahaya(v);
+                      },
+                      divisions: ((luxAbsMax - luxAbsMin) / 1000).toInt(),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              // Keluar akun
-              Card(
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 1,
-                child: ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text(
-                    'Keluar akun',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 16),
+            // Notifikasi
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Notifikasi',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                  onTap: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => Dialog(
-                        backgroundColor: const Color(0xFF0B6623),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Aktifkan notifikasi aplikasi',
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 24,
+                        Switch(
+                          value: notifEnabled,
+                          activeColor: Colors.white,
+                          activeTrackColor: Colors.green,
+                          onChanged: (v) {
+                            setState(() => notifEnabled = v);
+                            _updateNotifikasiEnabled(v);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Keep only two notification options: Pump status and critical plant alerts
+                    _notifTile('Notifikasi Status Pompa Irigasi', notifSiklus, (
+                      v,
+                    ) {
+                      setState(() => notifSiklus = v ?? false);
+                      _updateNotifikasiPompa(v ?? false);
+                    }),
+                    _notifTile('Notifikasi Tanaman Kritis', notifKritis, (v) {
+                      setState(() => notifKritis = v ?? false);
+                      _updateNotifikasiKritis(v ?? false);
+                    }),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Ubah kata sandi
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 1,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.lock_outline,
+                  color: Color(0xFF234D2B),
+                ),
+                title: const Text(
+                  'Ubah kata sandi',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+                onTap: () async {
+                  final oldPasswordController = TextEditingController();
+                  final newPasswordController = TextEditingController();
+                  final confirmPasswordController = TextEditingController();
+                  bool showOldPassword = false;
+                  bool showNewPassword = false;
+                  bool showConfirmPassword = false;
+
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => StatefulBuilder(
+                      builder: (context, setState) => AlertDialog(
+                        title: const Text('Ubah Kata Sandi'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextField(
+                              controller: oldPasswordController,
+                              obscureText: !showOldPassword,
+                              decoration: InputDecoration(
+                                labelText: 'Kata Sandi Lama',
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    showOldPassword
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      showOldPassword = !showOldPassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: newPasswordController,
+                              obscureText: !showNewPassword,
+                              decoration: InputDecoration(
+                                labelText: 'Kata Sandi Baru',
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    showNewPassword
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      showNewPassword = !showNewPassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: confirmPasswordController,
+                              obscureText: !showConfirmPassword,
+                              decoration: InputDecoration(
+                                labelText: 'Konfirmasi Kata Sandi Baru',
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    showConfirmPassword
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      showConfirmPassword =
+                                          !showConfirmPassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Batal'),
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.error_outline,
-                                color: Colors.red,
-                                size: 40,
-                              ),
-                              const SizedBox(height: 10),
-                              const Text(
-                                'Anda yakin ingin keluar dari akun?',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16.5,
-                                ),
-                              ),
-                              const SizedBox(height: 22),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text(
-                                    'Keluar',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFE5E5E5),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text(
-                                    'Kembali',
-                                    style: TextStyle(
-                                      color: Color(0xFF0B6623),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Simpan'),
                           ),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  if (result == true) {
+                    final oldPassword = oldPasswordController.text.trim();
+                    final newPassword = newPasswordController.text.trim();
+                    final confirmPassword = confirmPasswordController.text
+                        .trim();
+
+                    if (newPassword != confirmPassword) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Kata sandi baru tidak cocok'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final authService = AuthService();
+                      await authService.changePassword(
+                        oldPassword,
+                        newPassword,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Kata sandi berhasil diubah'),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Gagal mengubah kata sandi: ${e.toString()}',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Keluar akun
+            Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 1,
+              child: ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  'Keluar akun',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onTap: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => Dialog(
+                      backgroundColor: const Color(0xFF0B6623),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 24,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
+                              size: 40,
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Anda yakin ingin keluar dari akun?',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16.5,
+                              ),
+                            ),
+                            const SizedBox(height: 22),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  elevation: 0,
+                                ),
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text(
+                                  'Keluar',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE5E5E5),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  elevation: 0,
+                                ),
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text(
+                                  'Kembali',
+                                  style: TextStyle(
+                                    color: Color(0xFF0B6623),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                    if (confirm == true) {
-                      try {
-                        final authService = AuthService();
-                        await authService.logout();
-                        if (mounted) {
-                          Navigator.pushNamedAndRemoveUntil(
-                            context,
-                            '/welcome',
-                            (route) => false,
-                          );
-                        }
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Gagal keluar: ${e.toString()}'),
-                          ),
+                    ),
+                  );
+                  if (confirm == true) {
+                    try {
+                      final authService = AuthService();
+                      await authService.logout();
+                      if (mounted) {
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          '/welcome',
+                          (route) => false,
                         );
                       }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal keluar: ${e.toString()}'),
+                        ),
+                      );
                     }
-                  },
-                ),
+                  }
+                },
               ),
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
     );

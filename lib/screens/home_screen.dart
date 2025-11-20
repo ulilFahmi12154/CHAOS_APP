@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
 import 'package:chaos_app/screens/plant_detail_screen.dart';
 
@@ -235,65 +234,62 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
 
-    return AppScaffold(
-      currentIndex: 2,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildHeaderCard(context),
-            const SizedBox(height: 16),
-            if (belumPilih)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.orange.shade700,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Dashboard Default',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            'Pilih varietas untuk data real-time',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildHeaderCard(context),
+          const SizedBox(height: 16),
+          if (belumPilih)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.orange.shade200),
               ),
-            const SizedBox(height: 16),
-            _buildIrigasiCard(),
-            const SizedBox(height: 16),
-            _buildWarningNotif(),
-            const SizedBox(height: 16),
-            _buildSensorGrid(),
-            const SizedBox(height: 16),
-            _buildRecommendationRow(),
-            const SizedBox(height: 24),
-          ],
-        ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange.shade700,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Dashboard Default',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          'Pilih varietas untuk data real-time',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          _buildIrigasiCard(),
+          const SizedBox(height: 16),
+          _buildWarningNotif(),
+          const SizedBox(height: 16),
+          _buildSensorGrid(),
+          const SizedBox(height: 16),
+          _buildRecommendationRow(),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
