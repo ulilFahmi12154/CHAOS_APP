@@ -26,7 +26,8 @@ class AuthService {
       }
       return user;
     } on FirebaseAuthException catch (e) {
-      throw Exception(e.message);
+      // Propagate the original auth exception so callers can inspect e.code
+      rethrow;
     }
   }
 

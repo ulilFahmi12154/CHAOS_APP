@@ -17,11 +17,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final passCtrl = TextEditingController();
   final auth = AuthService();
   bool loading = false;
+  String? _loginError;
 
   void _login() async {
     setState(() => loading = true);
     try {
       await auth.login(emailCtrl.text.trim(), passCtrl.text.trim());
+      // clear any previous login error on success
+      setState(() => _loginError = null);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -31,9 +34,10 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Login gagal: $e")));
+      // On login failure, show a single centered alert below the password field
+      setState(() {
+        _loginError = 'Login Gagal, Username atau Password Anda Salah';
+      });
     } finally {
       setState(() => loading = false);
     }
@@ -129,6 +133,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: emailCtrl,
                       label: "Masukkan Email",
                       icon: Icons.email_outlined,
+                      onChanged: (_) {
+                        if (_loginError != null)
+                          setState(() => _loginError = null);
+                      },
                     ),
                     const SizedBox(height: 15),
                     CustomInput(
@@ -136,7 +144,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       label: "Masukkan Sandi",
                       icon: Icons.lock_outline,
                       obscure: true,
+                      onChanged: (_) {
+                        if (_loginError != null)
+                          setState(() => _loginError = null);
+                      },
                     ),
+                    // Centered login error shown below password field
+                    if (_loginError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: 12.0,
+                          left: 12.0,
+                          right: 12.0,
+                        ),
+                        child: Center(
+                          child: Text(
+                            _loginError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 10),
                     Align(
                       alignment: Alignment.centerRight,

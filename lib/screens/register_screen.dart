@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import 'main_navigation_screen.dart';
 import '../widgets/custom_input.dart';
@@ -21,6 +22,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _hasUpperLower = false;
   bool _hasDigit = false;
   bool _hasSymbol = false;
+  bool _showPasswordCriteria = false;
+  late FocusNode _passFocus;
+  String? _registerError;
 
   void _updatePasswordIndicators(String password) {
     setState(() {
@@ -32,6 +36,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _hasSymbol = RegExp(
         r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;\"]',
       ).hasMatch(password);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _passFocus = FocusNode();
+    _passFocus.addListener(() {
+      if (_passFocus.hasFocus) {
+        setState(() => _showPasswordCriteria = true);
+      } else {
+        setState(() => _showPasswordCriteria = false);
+      }
     });
   }
 
@@ -60,27 +77,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _register() async {
+    // clear previous error
+    setState(() => _registerError = null);
+
     // validate password strength
     final pwd = passCtrl.text.trim();
     final issues = _passwordIssues(pwd);
     if (issues.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Password tidak valid:\n${issues.join('\n')}')),
+      setState(
+        () => _registerError = 'Password tidak valid:\n${issues.join('\n')}',
       );
       return;
     }
 
     // validate password confirmation before attempting register
     if (passCtrl.text != confirmCtrl.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Konfirmasi sandi tidak cocok')),
-      );
+      setState(() => _registerError = 'Konfirmasi Password tidak cocok');
       return;
     }
 
     setState(() => loading = true);
     try {
       await auth.register(emailCtrl.text.trim(), passCtrl.text.trim());
+      // clear any previous register error on success
+      setState(() => _registerError = null);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -89,10 +109,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Register gagal: $e")));
+    } on FirebaseAuthException catch (e) {
+      String userMsg;
+      switch (e.code) {
+        case 'email-already-in-use':
+          userMsg = 'Email sudah digunakan';
+          break;
+        case 'invalid-email':
+          userMsg = 'Email tidak valid';
+          break;
+        case 'weak-password':
+          userMsg = 'Password terlalu lemah';
+          break;
+        default:
+          userMsg = 'Register gagal, silakan coba lagi';
+      }
+      setState(() => _registerError = userMsg);
     } finally {
       setState(() => loading = false);
     }
@@ -100,6 +132,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
+    _passFocus.dispose();
     emailCtrl.dispose();
     passCtrl.dispose();
     confirmCtrl.dispose();
@@ -194,30 +227,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       label: "Password",
                       icon: Icons.lock_outline,
                       obscure: true,
-                      onChanged: _updatePasswordIndicators,
+                      onChanged: (v) {
+                        _updatePasswordIndicators(v);
+                        if (_registerError != null)
+                          setState(() => _registerError = null);
+                      },
+                      focusNode: _passFocus,
                     ),
                     const SizedBox(height: 10),
-                    _CriteriaRow(ok: _hasMinLen, text: 'Minimal 8 karakter'),
-                    _CriteriaRow(
-                      ok: _hasUpperLower,
-                      text: 'Harus mengandung huruf besar dan huruf kecil',
-                    ),
-                    _CriteriaRow(
-                      ok: _hasDigit,
-                      text: 'Harus mengandung angka (0-9)',
-                    ),
-                    _CriteriaRow(
-                      ok: _hasSymbol,
-                      text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
-                    ),
+                    if (_showPasswordCriteria) ...[
+                      _CriteriaRow(ok: _hasMinLen, text: 'Minimal 8 karakter'),
+                      _CriteriaRow(
+                        ok: _hasUpperLower,
+                        text: 'Harus mengandung huruf besar dan huruf kecil',
+                      ),
+                      _CriteriaRow(
+                        ok: _hasDigit,
+                        text: 'Harus mengandung angka (0-9)',
+                      ),
+                      _CriteriaRow(
+                        ok: _hasSymbol,
+                        text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
+                      ),
+                    ],
                     const SizedBox(height: 15),
                     // confirmation field
                     CustomInput(
                       controller: confirmCtrl,
-                      label: "Konfirmasi Sandi",
+                      label: "Konfirmasi Password",
                       icon: Icons.lock_outline,
                       obscure: true,
+                      onChanged: (_) {
+                        if (_registerError != null)
+                          setState(() => _registerError = null);
+                      },
                     ),
+                    // Centered register error shown below confirmation field
+                    if (_registerError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: 8.0,
+                          left: 12.0,
+                          right: 12.0,
+                        ),
+                        child: Center(
+                          child: Text(
+                            _registerError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 25),
                     loading
                         ? const Center(child: CircularProgressIndicator())

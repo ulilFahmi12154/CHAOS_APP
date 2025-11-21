@@ -6,6 +6,8 @@ class CustomInput extends StatefulWidget {
   final bool obscure;
   final IconData icon;
   final ValueChanged<String>? onChanged;
+  final FocusNode? focusNode;
+  final VoidCallback? onTap;
 
   const CustomInput({
     super.key,
@@ -14,6 +16,8 @@ class CustomInput extends StatefulWidget {
     required this.icon,
     this.obscure = false,
     this.onChanged,
+    this.focusNode,
+    this.onTap,
   });
 
   @override
@@ -35,6 +39,8 @@ class _CustomInputState extends State<CustomInput> {
       controller: widget.controller,
       obscureText: _obscure,
       onChanged: widget.onChanged,
+      focusNode: widget.focusNode,
+      onTap: widget.onTap,
       decoration: InputDecoration(
         prefixIcon: Icon(widget.icon, color: Colors.green.shade700),
         labelText: widget.label,
