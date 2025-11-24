@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/auth_service.dart';
 import '../services/realtime_db_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -1136,280 +1135,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            // Ubah kata sandi
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 1,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.lock_outline,
-                  color: Color(0xFF234D2B),
-                ),
-                title: const Text(
-                  'Ubah kata sandi',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-                onTap: () async {
-                  final oldPasswordController = TextEditingController();
-                  final newPasswordController = TextEditingController();
-                  final confirmPasswordController = TextEditingController();
-                  bool showOldPassword = false;
-                  bool showNewPassword = false;
-                  bool showConfirmPassword = false;
-
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => StatefulBuilder(
-                      builder: (context, setState) => AlertDialog(
-                        title: const Text('Ubah Kata Sandi'),
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextField(
-                              controller: oldPasswordController,
-                              obscureText: !showOldPassword,
-                              decoration: InputDecoration(
-                                labelText: 'Kata Sandi Lama',
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    showOldPassword
-                                        ? Icons.visibility
-                                        : Icons.visibility_off,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      showOldPassword = !showOldPassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: newPasswordController,
-                              obscureText: !showNewPassword,
-                              decoration: InputDecoration(
-                                labelText: 'Kata Sandi Baru',
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    showNewPassword
-                                        ? Icons.visibility
-                                        : Icons.visibility_off,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      showNewPassword = !showNewPassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: confirmPasswordController,
-                              obscureText: !showConfirmPassword,
-                              decoration: InputDecoration(
-                                labelText: 'Konfirmasi Kata Sandi Baru',
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    showConfirmPassword
-                                        ? Icons.visibility
-                                        : Icons.visibility_off,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      showConfirmPassword =
-                                          !showConfirmPassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Batal'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Simpan'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-
-                  if (result == true) {
-                    final oldPassword = oldPasswordController.text.trim();
-                    final newPassword = newPasswordController.text.trim();
-                    final confirmPassword = confirmPasswordController.text
-                        .trim();
-
-                    if (newPassword != confirmPassword) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Kata sandi baru tidak cocok'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    try {
-                      final authService = AuthService();
-                      await authService.changePassword(
-                        oldPassword,
-                        newPassword,
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Kata sandi berhasil diubah'),
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Gagal mengubah kata sandi: ${e.toString()}',
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Keluar akun
-            Card(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 1,
-              child: ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  'Keluar akun',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                onTap: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => Dialog(
-                      backgroundColor: const Color(0xFF0B6623),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 24,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                              size: 40,
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Anda yakin ingin keluar dari akun?',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16.5,
-                              ),
-                            ),
-                            const SizedBox(height: 22),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  elevation: 0,
-                                ),
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text(
-                                  'Keluar',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE5E5E5),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  elevation: 0,
-                                ),
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text(
-                                  'Kembali',
-                                  style: TextStyle(
-                                    color: Color(0xFF0B6623),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                  if (confirm == true) {
-                    try {
-                      final authService = AuthService();
-                      await authService.logout();
-                      if (mounted) {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/welcome',
-                          (route) => false,
-                        );
-                      }
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Gagal keluar: ${e.toString()}'),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            ),
             const SizedBox(height: 32),
           ],
         ),
@@ -1432,38 +1157,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ancestor: overlay,
     );
 
-    // Position the menu right under the field
+    // Position menu tepat di bawah field dengan margin yang sama
     final RelativeRect position = RelativeRect.fromLTRB(
-      buttonBottomLeft.dx,
-      buttonBottomLeft.dy,
-      overlay.size.width - buttonTopLeft.dx - button.size.width,
-      overlay.size.height - buttonBottomLeft.dy,
+      buttonTopLeft.dx, // Left edge sejajar dengan field
+      buttonBottomLeft.dy + 4, // 4px gap dari field
+      overlay.size.width -
+          buttonTopLeft.dx -
+          button.size.width, // Right edge sejajar
+      overlay.size.height - buttonBottomLeft.dy - 4,
     );
 
-    // Ensure non-transparent popup background with rounded corners
+    // Menu dengan background putih, rounded corners, dan shadow
     final result = await showMenu<String>(
       context: context,
       position: position,
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: Colors.white,
+      constraints: BoxConstraints(
+        minWidth: button.size.width, // Width sama dengan field
+        maxWidth: button.size.width,
+      ),
       items: _varietasList.map((v) {
         final bool isSelected = v == _selectedVarietas;
         return PopupMenuItem<String>(
           value: v,
-          height: 48,
-          child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFB9B9B9) : Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              color: isSelected ? Colors.green.shade50 : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: isSelected
+                  ? Border.all(color: Colors.green.shade200, width: 1)
+                  : null,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Text(
-              v,
-              style: TextStyle(
-                color: isSelected ? Colors.black87 : const Color(0xFF2D5F40),
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.eco,
+                  size: 18,
+                  color: isSelected
+                      ? Colors.green.shade700
+                      : Colors.grey.shade600,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    v,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.green.shade800
+                          : Colors.black87,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle,
+                    size: 18,
+                    color: Colors.green.shade700,
+                  ),
+              ],
             ),
           ),
         );
