@@ -73,7 +73,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Colors.white),
             onPressed: () {
-              // TODO: Implement notifications
+              Navigator.pushNamed(context, '/notifikasi');
             },
           ),
         ],

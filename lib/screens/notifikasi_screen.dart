@@ -322,7 +322,7 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      currentIndex: 0,
+      currentIndex: -1,
       body: Column(
         children: [
           const Padding(

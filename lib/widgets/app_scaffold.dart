@@ -43,8 +43,38 @@ class _AppScaffoldState extends State<AppScaffold> {
     } catch (_) {}
   }
 
+  Future<void> _markNotificationsOpenedInFirestore() async {
+    try {
+      final col = FirebaseFirestore.instance.collection('notifications');
+      final snap = await col
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .get();
+      if (snap.docs.isEmpty) return;
+      final batch = FirebaseFirestore.instance.batch();
+      var updates = 0;
+      for (final d in snap.docs) {
+        final data = d.data();
+        // Only update docs that are not already opened/read to minimize writes
+        if (data['opened'] == true && data['read'] == true) continue;
+        final Map<String, dynamic> upd = {};
+        if (data['opened'] != true) upd['opened'] = true;
+        if (data['read'] != true) upd['read'] = true;
+        if (upd.isNotEmpty) {
+          batch.update(d.reference, upd);
+          updates++;
+        }
+      }
+      if (updates > 0) await batch.commit();
+    } catch (e) {
+      debugPrint('Failed to mark notifications opened from AppScaffold: $e');
+    }
+  }
+
   Future<void> _markOpenedNow() async {
     try {
+      // Mark in Firestore first so queries in other clients update quickly.
+      await _markNotificationsOpenedInFirestore();
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('notifications_last_opened', now);
