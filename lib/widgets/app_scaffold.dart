@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/kontrol_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/home_screen.dart';
@@ -22,12 +24,34 @@ class AppScaffold extends StatefulWidget {
 }
 
 class _AppScaffoldState extends State<AppScaffold> {
+  int _lastOpenedMillis = 0;
   // Cache untuk menyimpan instance screen agar tidak rebuild terus
   static final Map<int, Widget> _cachedScreens = {};
 
   @override
   void initState() {
     super.initState();
+    _loadLastOpened();
+  }
+
+  Future<void> _loadLastOpened() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _lastOpenedMillis = prefs.getInt('notifications_last_opened') ?? 0;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _markOpenedNow() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setInt('notifications_last_opened', now);
+      setState(() {
+        _lastOpenedMillis = now;
+      });
+    } catch (_) {}
     // Preload semua screen saat pertama kali
     _preloadScreens();
   }
@@ -72,10 +96,98 @@ class _AppScaffoldState extends State<AppScaffold> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-            onPressed: () {
-              // TODO: Implement notifications
+          // Show unread badge if: (A) any doc has opened==false/read==false,
+          // or (B) latest notification timestamp > last-opened timestamp.
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .orderBy('timestamp', descending: true)
+                .limit(1)
+                .snapshots(),
+            builder: (context, latestSnap) {
+              bool hasUnread = false;
+              int latestMillis = 0;
+
+              if (latestSnap.hasData &&
+                  (latestSnap.data?.docs.isNotEmpty ?? false)) {
+                final first = latestSnap.data!.docs.first.data();
+                if (first is Map<String, dynamic>) {
+                  final ts = first['timestamp'];
+                  try {
+                    if (ts is Timestamp) {
+                      latestMillis = ts.toDate().millisecondsSinceEpoch;
+                    } else if (ts is int)
+                      latestMillis = ts;
+                    else
+                      latestMillis = int.tryParse(ts.toString()) ?? 0;
+                  } catch (_) {
+                    latestMillis = 0;
+                  }
+                }
+                if (latestMillis > _lastOpenedMillis) hasUnread = true;
+              }
+
+              // Also check explicit flags (opened/read)
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('notifications')
+                    .where('opened', isEqualTo: false)
+                    .limit(1)
+                    .snapshots(),
+                builder: (context, openedSnap) {
+                  if (openedSnap.hasData &&
+                      (openedSnap.data?.docs.isNotEmpty ?? false)) {
+                    hasUnread = true;
+                  }
+
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('notifications')
+                        .where('read', isEqualTo: false)
+                        .limit(1)
+                        .snapshots(),
+                    builder: (context, readSnap) {
+                      if (readSnap.hasData &&
+                          (readSnap.data?.docs.isNotEmpty ?? false)) {
+                        hasUnread = true;
+                      }
+
+                      return IconButton(
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(
+                              Icons.notifications_outlined,
+                              color: Colors.white,
+                            ),
+                            if (hasUnread)
+                              Positioned(
+                                right: -1,
+                                top: -1,
+                                child: Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        onPressed: () async {
+                          await _markOpenedNow();
+                          Navigator.pushNamed(context, '/notifikasi');
+                        },
+                      );
+                    },
+                  );
+                },
+              );
             },
           ),
         ],
