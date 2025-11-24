@@ -12,6 +12,7 @@ import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/rekomendasi_pupuk_screen.dart';
+import 'screens/notifikasi_screen.dart';
 import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
 
@@ -113,6 +114,7 @@ class _MyAppState extends State<MyApp> {
         '/rekomendasi-pupuk': (context) => const RekomendasiPupukPage(),
         '/intro': (context) => const IntroSlidesScreen(),
         '/welcome': (context) => const WelcomeScreen(),
+        '/notifikasi': (context) => const NotifikasiScreen(),
       },
     );
   }

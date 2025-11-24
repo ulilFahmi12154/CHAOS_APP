@@ -97,6 +97,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final RealtimeDbService _dbService = RealtimeDbService();
   String? activeVarietas;
   bool pompaStatus = false;
+  // Track which realtime warnings have been mirrored to Firestore to avoid duplicates
+  final Set<String> _writtenWarningKeys = {};
 
   @override
   void initState() {
@@ -333,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: DropdownButtonFormField<String>(
-                  value: varietasList.contains(activeVarietas)
+                  initialValue: varietasList.contains(activeVarietas)
                       ? activeVarietas
                       : null,
                   hint: const Text('Pilih varietas untuk testing...'),
@@ -735,6 +737,47 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Mirror new realtime warnings into Firestore 'notifications' collection.
+  // This is executed asynchronously and guarded by `_writtenWarningKeys`.
+  Future<void> _syncWarningsToFirestore(
+    List<Map<String, dynamic>> warnings,
+  ) async {
+    final firestore = FirebaseFirestore.instance;
+    for (final w in warnings) {
+      try {
+        final sensor = (w['sensor'] ?? 'sensor').toString();
+        final message = (w['message'] ?? '').toString();
+        final level = (w['level'] ?? '').toString();
+
+        // Use provided timestamp if available to form a stable key, otherwise use message hash
+        final tsValue = w['timestamp'];
+        String key;
+        if (tsValue != null) {
+          key = '${sensor}_$tsValue';
+        } else {
+          key = '${sensor}_${message.hashCode}';
+        }
+
+        if (_writtenWarningKeys.contains(key)) continue;
+
+        await firestore.collection('notifications').add({
+          'title': sensor, // short title
+          'message': message,
+          'level': level,
+          'sensor': sensor,
+          'source': 'realtime_warning',
+          // store server timestamp to have consistent ordering in Firestore
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        _writtenWarningKeys.add(key);
+      } catch (e) {
+        // ignore write errors for now, but don't crash the UI
+        debugPrint('Failed to sync warning to Firestore: $e');
+      }
+    }
+  }
+
   Widget _buildIrigasiCard() {
     final varietasToUse = activeVarietas ?? 'default';
 
@@ -976,6 +1019,22 @@ class _HomeScreenState extends State<HomeScreen> {
           final levelB = b['level'] == 'critical' ? 0 : 1;
           return levelA.compareTo(levelB);
         });
+
+        // Schedule mirroring of new warnings to Firestore after this frame
+        final toWrite = activeWarnings.where((w) {
+          final sensor = (w['sensor'] ?? 'sensor').toString();
+          final ts = w['timestamp'];
+          final key = ts != null
+              ? '${sensor}_$ts'
+              : '${sensor}_${(w['message'] ?? '').toString().hashCode}';
+          return !_writtenWarningKeys.contains(key);
+        }).toList();
+
+        if (toWrite.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _syncWarningsToFirestore(toWrite);
+          });
+        }
 
         if (activeWarnings.isEmpty) {
           return Container(
