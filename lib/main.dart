@@ -5,11 +5,7 @@ import 'package:app_links/app_links.dart'; // 🔹 Ganti dari uni_links
 import 'dart:async';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
-import 'screens/home_screen.dart';
-import 'screens/kontrol_screen.dart';
-import 'screens/history_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/profile_screen.dart';
+import 'screens/main_navigation_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/rekomendasi_pupuk_screen.dart';
 import 'screens/notifikasi_screen.dart';
@@ -101,21 +97,62 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
         colorSchemeSeed: Colors.green,
         scaffoldBackgroundColor: Colors.green.shade50,
+        // Global page transition: fade dengan scale seperti app modern
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeScalePageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.windows: FadeScalePageTransitionsBuilder(),
+            TargetPlatform.linux: FadeScalePageTransitionsBuilder(),
+            TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
         textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       home: const SplashScreen(),
       routes: {
-        '/home': (context) => const HomeScreen(),
-        '/kontrol': (context) => const KontrolScreen(),
-        '/history': (context) => const HistoryScreen(),
-        '/settings': (context) => const SettingsScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/welcome': (context) => const SplashScreen(),
+        '/main': (context) => const MainNavigationScreen(initialIndex: 2),
+        '/home': (context) => const MainNavigationScreen(initialIndex: 2),
+        '/kontrol': (context) => const MainNavigationScreen(initialIndex: 0),
+        '/history': (context) => const MainNavigationScreen(initialIndex: 1),
+        '/settings': (context) => const MainNavigationScreen(initialIndex: 3),
+        '/profile': (context) => const MainNavigationScreen(initialIndex: 4),
+        '/welcome': (context) => const WelcomeScreen(),
         '/rekomendasi-pupuk': (context) => const RekomendasiPupukPage(),
         '/intro': (context) => const IntroSlidesScreen(),
-        '/welcome': (context) => const WelcomeScreen(),
         '/notifikasi': (context) => const NotifikasiScreen(),
       },
+    );
+  }
+}
+
+// Custom transition builder untuk efek fade + scale modern
+class FadeScalePageTransitionsBuilder extends PageTransitionsBuilder {
+  const FadeScalePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    const curve = Curves.easeInOut;
+
+    var fadeAnimation = Tween(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: animation, curve: curve));
+
+    var scaleAnimation = Tween(
+      begin: 0.95,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: animation, curve: curve));
+
+    return FadeTransition(
+      opacity: fadeAnimation,
+      child: ScaleTransition(scale: scaleAnimation, child: child),
     );
   }
 }

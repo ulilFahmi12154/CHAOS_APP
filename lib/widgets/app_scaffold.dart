@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../screens/kontrol_screen.dart';
+import '../screens/history_screen.dart';
+import '../screens/home_screen.dart';
+import '../screens/settings_screen.dart';
+import '../screens/profile_screen.dart';
 
 /// Template scaffold dengan app bar dan bottom navigation
 /// yang bisa digunakan di semua halaman utama
@@ -20,6 +25,8 @@ class AppScaffold extends StatefulWidget {
 
 class _AppScaffoldState extends State<AppScaffold> {
   int _lastOpenedMillis = 0;
+  // Cache untuk menyimpan instance screen agar tidak rebuild terus
+  static final Map<int, Widget> _cachedScreens = {};
 
   @override
   void initState() {
@@ -45,6 +52,23 @@ class _AppScaffoldState extends State<AppScaffold> {
         _lastOpenedMillis = now;
       });
     } catch (_) {}
+    // Preload semua screen saat pertama kali
+    _preloadScreens();
+  }
+
+  void _preloadScreens() {
+    // Cache semua screen untuk navigasi instant
+    if (_cachedScreens.isEmpty) {
+      _cachedScreens[0] = const KontrolScreen();
+      _cachedScreens[1] = const HistoryScreen();
+      _cachedScreens[2] = const HomeScreen();
+      _cachedScreens[3] = const SettingsScreen();
+      _cachedScreens[4] = const ProfileScreen();
+    }
+  }
+
+  Widget _getScreen(int index) {
+    return _cachedScreens[index] ?? const HomeScreen();
   }
 
   @override
@@ -266,27 +290,35 @@ class _AppScaffoldState extends State<AppScaffold> {
   void _navigateTo(BuildContext context, int index) {
     if (index == widget.currentIndex) return;
 
-    String routeName;
-    switch (index) {
-      case 0:
-        routeName = '/kontrol';
-        break;
-      case 1:
-        routeName = '/history';
-        break;
-      case 2:
-        routeName = '/home';
-        break;
-      case 3:
-        routeName = '/settings';
-        break;
-      case 4:
-        routeName = '/profile';
-        break;
-      default:
-        return;
-    }
+    // Navigasi instant dengan cached screen - tidak ada loading
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          // Gunakan cached screen untuk instant loading
+          return _getScreen(index);
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Transisi sangat cepat untuk navigasi instant
+          const curve = Curves.easeOut;
 
-    Navigator.pushReplacementNamed(context, routeName);
+          var fadeAnimation = Tween(
+            begin: 0.0,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: animation, curve: curve));
+
+          var scaleAnimation = Tween(
+            begin: 0.98,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: animation, curve: curve));
+
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: ScaleTransition(scale: scaleAnimation, child: child),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 180),
+        reverseTransitionDuration: const Duration(milliseconds: 150),
+      ),
+    );
   }
 }

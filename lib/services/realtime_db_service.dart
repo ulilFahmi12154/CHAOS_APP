@@ -127,34 +127,65 @@ class RealtimeDbService {
   }
 
   /// Update varietas yang dipilih
+  /// Simpan di dua path untuk sinkronisasi dengan home screen
   Future<void> updateVarietas(String userId, String varietas) async {
+    // Update di settings (untuk settings screen)
     await _dbRef.child('users/$userId/settings/varietas').set(varietas);
+    // Update di active_varietas (untuk home screen/dashboard)
+    await _dbRef.child('users/$userId/active_varietas').set(varietas);
   }
 
-  /// Update ambang batas suhu
-  Future<void> updateAmbangSuhu(String userId, double value) async {
-    await _dbRef.child('users/$userId/settings/ambang_batas/suhu').set(value);
+  /// Update ambang batas suhu (min dan max)
+  Future<void> updateAmbangSuhu(String userId, double min, double max) async {
+    await _dbRef.child('users/$userId/settings/ambang_batas/suhu').set({
+      'min': min,
+      'max': max,
+    });
   }
 
-  /// Update ambang batas kelembapan udara
-  Future<void> updateAmbangKelembapanUdara(String userId, double value) async {
+  /// Update ambang batas kelembapan udara (min dan max)
+  Future<void> updateAmbangKelembapanUdara(
+    String userId,
+    double min,
+    double max,
+  ) async {
     await _dbRef
         .child('users/$userId/settings/ambang_batas/kelembapan_udara')
-        .set(value);
+        .set({'min': min, 'max': max});
   }
 
-  /// Update ambang batas pH tanah
-  Future<void> updateAmbangPhTanah(String userId, double value) async {
+  /// Update ambang batas kelembapan tanah (min dan max)
+  Future<void> updateAmbangKelembapanTanah(
+    String userId,
+    double min,
+    double max,
+  ) async {
     await _dbRef
-        .child('users/$userId/settings/ambang_batas/ph_tanah')
-        .set(value);
+        .child('users/$userId/settings/ambang_batas/kelembapan_tanah')
+        .set({'min': min, 'max': max});
   }
 
-  /// Update ambang batas intensitas cahaya
-  Future<void> updateAmbangIntensitasCahaya(String userId, double value) async {
+  /// Update ambang batas pH tanah (min dan max)
+  Future<void> updateAmbangPhTanah(
+    String userId,
+    double min,
+    double max,
+  ) async {
+    await _dbRef.child('users/$userId/settings/ambang_batas/ph_tanah').set({
+      'min': min,
+      'max': max,
+    });
+  }
+
+  /// Update ambang batas intensitas cahaya (min dan max)
+  Future<void> updateAmbangIntensitasCahaya(
+    String userId,
+    double min,
+    double max,
+  ) async {
     await _dbRef
         .child('users/$userId/settings/ambang_batas/intensitas_cahaya')
-        .set(value);
+        .set({'min': min, 'max': max});
   }
 
   /// Update status notifikasi aplikasi

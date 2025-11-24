@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../widgets/app_scaffold.dart';
 
 class KontrolScreen extends StatefulWidget {
   const KontrolScreen({super.key});
@@ -71,32 +70,29 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      currentIndex: 0,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Header
-            _buildHeaderCard(),
-            const SizedBox(height: 24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Header
+          _buildHeaderCard(),
+          const SizedBox(height: 24),
 
-            // Mode Control Card
-            _buildModeControlCard(),
-            const SizedBox(height: 20),
+          // Mode Control Card
+          _buildModeControlCard(),
+          const SizedBox(height: 20),
 
-            // Pompa Control Card
-            _buildPompaControlCard(),
-            const SizedBox(height: 20),
+          // Pompa Control Card
+          _buildPompaControlCard(),
+          const SizedBox(height: 20),
 
-            // Ambang Batas Settings
-            _buildThresholdSettingsCard(),
-            const SizedBox(height: 20),
+          // Ambang Batas Settings
+          _buildThresholdSettingsCard(),
+          const SizedBox(height: 20),
 
-            // Status Dashboard
-            _buildStatusDashboard(),
-          ],
-        ),
+          // Status Dashboard
+          _buildStatusDashboard(),
+        ],
       ),
     );
   }

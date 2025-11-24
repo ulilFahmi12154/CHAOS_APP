@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_scaffold.dart';
 import '../services/realtime_db_service.dart';
 import 'package:chaos_app/screens/plant_detail_screen.dart';
 
@@ -100,10 +99,67 @@ class _HomeScreenState extends State<HomeScreen> {
   // Track which realtime warnings have been mirrored to Firestore to avoid duplicates
   final Set<String> _writtenWarningKeys = {};
 
+  // Ambang batas dari settings (default values)
+  double suhuMin = 22, suhuMax = 28;
+  double humMin = 50, humMax = 58;
+  double soilMin = 1100, soilMax = 1900;
+  double phMin = 5.8, phMax = 6.5;
+  double luxMin = 1800, luxMax = 4095;
+
   @override
   void initState() {
     super.initState();
     _loadActiveVarietas();
+    _loadUserSettings();
+  }
+
+  /// Load config varietas dari Firestore untuk mendapatkan min/max ranges
+  Future<void> _loadVarietasConfig(String varietasId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('varietas_config')
+          .doc(varietasId)
+          .get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+
+        setState(() {
+          // Update range dari Firestore config
+          suhuMin = (data['suhu_min'] ?? 22).toDouble();
+          suhuMax = (data['suhu_max'] ?? 28).toDouble();
+          humMin = (data['kelembapan_udara_min'] ?? 50).toDouble();
+          humMax = (data['kelembapan_udara_max'] ?? 58).toDouble();
+          soilMin = (data['soil_min'] ?? 1100).toDouble();
+          soilMax = (data['soil_max'] ?? 1900).toDouble();
+          phMin = (data['ph_min'] ?? 5.8).toDouble();
+          phMax = (data['ph_max'] ?? 6.5).toDouble();
+          luxMin = (data['light_min'] ?? 1800).toDouble();
+          luxMax = (data['light_max'] ?? 4095).toDouble();
+        });
+      }
+    } catch (e) {
+      print('Error loading varietas config: $e');
+    }
+  }
+
+  /// Load ambang batas dari user settings
+  Future<void> _loadUserSettings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Listen to varietas changes
+    final varietasRef = FirebaseDatabase.instance.ref(
+      'users/${user.uid}/active_varietas',
+    );
+
+    varietasRef.onValue.listen((event) async {
+      if (event.snapshot.exists && mounted) {
+        final varietas = event.snapshot.value.toString();
+        // Load config untuk varietas ini
+        await _loadVarietasConfig(varietas);
+      }
+    });
   }
 
   Future<void> _loadActiveVarietas() async {
@@ -180,146 +236,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
 
-    return AppScaffold(
-      currentIndex: 2,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildHeaderCard(context),
-            const SizedBox(height: 16),
-            // Widget pemilihan varietas untuk percobaan
-            _buildVarietasPicker(),
-            const SizedBox(height: 16),
-            if (belumPilih)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.orange.shade700,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Dashboard Default',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            'Pilih varietas untuk data real-time',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildHeaderCard(context),
+          const SizedBox(height: 16),
+          if (belumPilih)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.orange.shade200),
               ),
-            const SizedBox(height: 16),
-            _buildIrigasiCard(),
-            const SizedBox(height: 16),
-            _buildWarningNotif(),
-            const SizedBox(height: 16),
-            _buildSensorGrid(),
-            const SizedBox(height: 16),
-            _buildRecommendationRow(),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Widget baru untuk pemilihan varietas dari Firestore
-  Widget _buildVarietasPicker() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('varietas_config')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Text(
-              'Tidak ada varietas tersedia',
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        // Ambil list varietas dari Firestore
-        final varietasList = snapshot.data!.docs
-            .map((doc) => doc.id) // Gunakan document ID sebagai nama varietas
-            .toList();
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+              child: Row(
                 children: [
-                  Icon(Icons.science, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Pilih Varietas (Percobaan)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange.shade700,
+                    size: 28,
                   ),
                 ],
               ),
@@ -476,50 +412,31 @@ class _HomeScreenState extends State<HomeScreen> {
                                   : Colors.black,
                             ),
                           ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    border: InputBorder.none,
-                  ),
-                ),
-              ),
-              if (activeVarietas != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Varietas aktif: ${activeVarietas!.replaceAll('_', ' ').toUpperCase()}',
+                        ),
+                        Text(
+                          'Pilih varietas untuk data real-time',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade700,
+                            color: Colors.orange.shade700,
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          _buildIrigasiCard(),
+          const SizedBox(height: 16),
+          _buildWarningNotif(),
+          const SizedBox(height: 16),
+          _buildSensorGrid(),
+          const SizedBox(height: 16),
+          _buildRecommendationRow(),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -1173,8 +1090,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.orange,
                 _dbService.suhuStream(varietasToUse),
                 '°C',
-                25,
-                30,
+                suhuMin,
+                suhuMax,
               ),
             ),
             const SizedBox(width: 12),
@@ -1185,8 +1102,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.blue,
                 _dbService.kelembapanUdaraStream(varietasToUse),
                 '%',
-                40,
-                80,
+                humMin,
+                humMax,
               ),
             ),
           ],
@@ -1201,8 +1118,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.green,
                 _dbService.kelembapanTanahStream(varietasToUse),
                 'ADC',
-                1200,
-                2000,
+                soilMin,
+                soilMax,
               ),
             ),
             const SizedBox(width: 12),
@@ -1213,8 +1130,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.yellow.shade700,
                 _dbService.cahayaStream(varietasToUse),
                 'Lux',
-                2000,
-                4095,
+                luxMin,
+                luxMax,
               ),
             ),
           ],
@@ -1229,8 +1146,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.purple,
                 _dbService.phTanahStream(varietasToUse),
                 'pH',
-                5.5,
-                7.5,
+                phMin,
+                phMax,
               ),
             ),
             const SizedBox(width: 12),

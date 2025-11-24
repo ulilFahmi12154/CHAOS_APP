@@ -1,4 +1,4 @@
-import 'home_screen.dart';
+import 'main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 // import 'welcome_screen.dart';
@@ -26,7 +26,9 @@ class _SplashScreenState extends State<SplashScreen> {
     if (user != null) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => const MainNavigationScreen(initialIndex: 2),
+        ),
       );
     } else {
       // Jika belum login, tampilkan intro slides terlebih dahulu

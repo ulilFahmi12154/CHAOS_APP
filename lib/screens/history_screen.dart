@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../widgets/app_scaffold.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -13,10 +13,12 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
+  String? _activeVarietas;
+  final TransformationController _zoomController = TransformationController();
 
   // Tab selections
   int _selectedDataType =
-      0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya
+      0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara
   int _selectedTimeFilter = 0; // 0: Hari Ini, 1: Minggu Ini, 2: Bulan Ini
 
   List<Map<String, dynamic>> _historyData = [];
@@ -29,23 +31,76 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistoryData();
+    _loadActiveVarietasAndHistory();
   }
 
-  Future<void> _loadHistoryData() async {
+  @override
+  void dispose() {
+    _zoomController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadActiveVarietasAndHistory() async {
+    setState(() => _isLoading = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Fetch user's active varietas
+      final userSnap = await _dbRef.child('users').child(uid).get();
+      String? varietasKey;
+      if (userSnap.exists && userSnap.value is Map) {
+        final map = userSnap.value as Map;
+        varietasKey =
+            (map['active_varietas'] ??
+                    map['active_varieta'] ??
+                    map['active_varietes'])
+                as String?;
+      }
+      _activeVarietas = varietasKey;
+
+      await _loadHistoryData(varietasKey);
+    } catch (e) {
+      print('Error loading active varietas/history: $e');
+    }
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadHistoryData(String? varietasKey) async {
     setState(() => _isLoading = true);
 
     try {
-      // Try the most likely locations for the historical data. Some devices
-      // write under different root paths (e.g. `smartfarm/history/dewata_f1`).
-      var snapshot = await _dbRef.child('dewata_f1').get();
-      if (!snapshot.exists) {
-        final alt = await _dbRef
+      // Determine history node to load based on user's active varietas.
+      // Prefer smartfarm/history/<varietas>, fallback to <varietas>, and finally legacy 'dewata_f1'.
+      DataSnapshot? chosen;
+      if (varietasKey != null && varietasKey.isNotEmpty) {
+        final primary = await _dbRef
+            .child('smartfarm')
+            .child('history')
+            .child(varietasKey)
+            .get();
+        if (primary.exists) {
+          chosen = primary;
+        } else {
+          final fallback = await _dbRef.child(varietasKey).get();
+          if (fallback.exists) chosen = fallback;
+        }
+      }
+
+      var snapshot = chosen;
+      if (snapshot == null || !snapshot.exists) {
+        // Final fallback for older data paths
+        snapshot = await _dbRef
             .child('smartfarm')
             .child('history')
             .child('dewata_f1')
             .get();
-        if (alt.exists) snapshot = alt;
+        if (!snapshot.exists) {
+          snapshot = await _dbRef.child('dewata_f1').get();
+        }
       }
 
       if (snapshot.exists) {
@@ -189,6 +244,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       case 2:
         dataKey = 'intensitas_cahaya';
         break;
+      case 3:
+        dataKey = 'kelembapan_udara';
+        break;
       default:
         dataKey = 'kelembaban_tanah';
     }
@@ -222,6 +280,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         break;
       case 2:
         dataKey = 'intensitas_cahaya';
+        break;
+      case 3:
+        dataKey = 'kelembapan_udara';
         break;
       default:
         dataKey = 'kelembaban_tanah';
@@ -260,87 +321,88 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      currentIndex: 1,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.green))
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator(color: Colors.green))
+        : SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
 
-                  // Title
-                  const Text(
-                    'Data Historis Tanaman',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D5F40),
-                    ),
+                // Title
+                const Text(
+                  'Data Historis Tanaman',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D5F40),
                   ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Varietas: ${_activeVarietas ?? '-'}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
 
-                  const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-                  // Data Type Tabs
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildDataTypeTab('Kelembapan\nTanah', 0),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildDataTypeTab('Suhu\nUdara', 1)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildDataTypeTab('Intensitas\nCahaya', 2),
+                // Data Type Grid (2 x 2)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    childAspectRatio: 2.8,
+                    children: [
+                      _buildDataTypeTab('Kelembapan\nTanah', 0),
+                      _buildDataTypeTab('Suhu\nUdara', 1),
+                      _buildDataTypeTab('Intensitas\nCahaya', 2),
+                      _buildDataTypeTab('Kelembapan\nUdara', 3),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Time Filter Choice Chips
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildTimeFilterChips(),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Chart Container
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Time Filter Tabs
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(child: _buildTimeFilterTab('Hari Ini', 0)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildTimeFilterTab('Minggu Ini', 1)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildTimeFilterTab('Bulan Ini', 2)),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Chart Container
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          // Chart (clipped to card radius so area fill doesn't overflow)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            clipBehavior: Clip.hardEdge,
-                            child: SizedBox(
-                              height: 250,
+                        // Chart (clipped and zoomable via InteractiveViewer)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            height: 250,
+                            child: InteractiveViewer(
+                              transformationController: _zoomController,
+                              minScale: 1.0,
+                              maxScale: 5.0,
+                              boundaryMargin: const EdgeInsets.all(24),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8.0,
@@ -349,51 +411,67 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               ),
                             ),
                           ),
+                        ),
 
-                          const SizedBox(height: 16),
-
-                          // Statistics
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Rata-rata: ${_average.toStringAsFixed(0)}%',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
-                                ),
+                        // Reset zoom button
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () =>
+                                _zoomController.value = Matrix4.identity(),
+                            icon: const Icon(Icons.zoom_out_map, size: 16),
+                            label: const Text('Reset Zoom'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
                               ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Maks: ${_max.toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Min: ${_min.toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                              foregroundColor: const Color(0xFF2D5F40),
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+
+                        const SizedBox(height: 16),
+                        // Statistics row (average, max, min)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Rata-rata: ${_average.toStringAsFixed(0)}${_unitSuffix()}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Maks: ${_max.toStringAsFixed(0)}${_unitSuffix()}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                Text(
+                                  'Min: ${_min.toStringAsFixed(0)}${_unitSuffix()}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 100),
-                ],
-              ),
+                const SizedBox(height: 100),
+              ],
             ),
-    );
+          );
   }
 
   Widget _buildDataTypeTab(String text, int index) {
@@ -458,6 +536,44 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // Removed _buildDataTypeChips (replaced by 2x2 GridView)
+
+  Widget _buildTimeFilterChips() {
+    final labels = const ['Hari Ini', 'Minggu Ini', 'Bulan Ini'];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: List.generate(labels.length, (i) {
+        final selected = _selectedTimeFilter == i;
+        return ChoiceChip(
+          label: Text(
+            labels[i],
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+              color: selected ? Colors.white : Colors.black87,
+            ),
+          ),
+          selected: selected,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          backgroundColor: Colors.white,
+          selectedColor: const Color(0xFF2D5F40),
+          side: BorderSide(
+            color: selected ? const Color(0xFF2D5F40) : Colors.grey.shade300,
+          ),
+          onSelected: (_) {
+            setState(() {
+              _selectedTimeFilter = i;
+              _calculateStats();
+            });
+          },
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        );
+      }),
+    );
+  }
+
   Widget _buildChart() {
     List<FlSpot> spots = _getChartData();
 
@@ -471,9 +587,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
     // choose left axis interval depending on selected data type
     // for intensity and kelembapan tanah we use 1k steps; otherwise smaller steps
-    double leftInterval = (_selectedDataType == 2 || _selectedDataType == 0)
-        ? 1000
-        : 10;
+    double leftInterval;
+    if (_selectedDataType == 2 || _selectedDataType == 0) {
+      leftInterval = 1000;
+    } else if (_selectedDataType == 3) {
+      leftInterval = 10;
+    } else {
+      leftInterval = 10;
+    }
     double minY = 0;
 
     return LineChart(
@@ -558,12 +679,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
-            // tooltipBgColor: const Color(0xFF2D5F40),
             tooltipRoundedRadius: 8,
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((spot) {
                 return LineTooltipItem(
-                  '${spot.y.toStringAsFixed(0)}%',
+                  '${spot.y.toStringAsFixed(0)}${_unitSuffix()}',
                   const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -580,13 +700,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String _getYAxisLabel() {
     switch (_selectedDataType) {
       case 0:
-        return 'Kelembaban (%)';
+        return 'Kelembaban Tanah';
       case 1:
-        return 'Suhu (°C)';
+        return 'Suhu Udara';
       case 2:
-        return 'Intensitas (%)';
+        return 'Intensitas Cahaya';
+      case 3:
+        return 'Kelembapan Udara';
       default:
-        return 'Value (%)';
+        return 'Nilai';
     }
   }
 
@@ -601,12 +723,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return 5000;
     }
 
+    // For kelembapan udara, 0..100
+    if (_selectedDataType == 3) {
+      return 100;
+    }
+
     // Default fixed ranges for other data types
     switch (_selectedDataType) {
       case 1:
         return 50; // Suhu Udara
       default:
         return 100;
+    }
+  }
+
+  String _unitSuffix() {
+    // Provide unit suffix for stats/tooltip as needed
+    switch (_selectedDataType) {
+      case 2:
+        return ''; // Intensitas (lux) – omit unit here to keep compact
+      case 1:
+        return '°'; // temperature (approx)
+      case 0:
+      case 3:
+        return '%';
+      default:
+        return '';
     }
   }
 }
