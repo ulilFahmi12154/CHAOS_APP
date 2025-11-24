@@ -104,4 +104,17 @@ class AuthService {
       throw Exception(e.message);
     }
   }
+
+  // 🔹 Cek metode sign-in yang tersedia untuk email
+  Future<List<String>?> getSignInMethodsForEmail(String email) async {
+    try {
+      return await _auth.fetchSignInMethodsForEmail(email);
+    } on FirebaseAuthException catch (e) {
+      // Jika error user-not-found, kembalikan list kosong bukan throw exception
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+        return [];
+      }
+      throw Exception(e.message);
+    }
+  }
 }

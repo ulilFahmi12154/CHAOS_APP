@@ -15,11 +15,37 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final confirmCtrl = TextEditingController();
   final auth = AuthService();
   bool loading = false;
+  String? expiredError;
   // Live password criteria flags
   bool _hasMinLen = false;
   bool _hasUpperLower = false;
   bool _hasDigit = false;
   bool _hasSymbol = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyCodeOnInit();
+  }
+
+  Future<void> _verifyCodeOnInit() async {
+    if (widget.oobCode == null) {
+      setState(() => expiredError = 'Kode reset tidak ditemukan');
+      return;
+    }
+
+    try {
+      print('🔍 DEBUG: Verifying code: ${widget.oobCode}');
+      await auth.verifyPasswordResetCode(widget.oobCode!);
+      print('🔍 DEBUG: Code is valid');
+    } catch (e) {
+      print('🔍 DEBUG: Code verification failed: $e');
+      setState(
+        () => expiredError =
+            'Link reset sudah expired atau tidak valid. Silakan request ulang.',
+      );
+    }
+  }
 
   void _updatePasswordIndicators(String password) {
     setState(() {
@@ -161,82 +187,134 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Title & subtitle
-                    Center(
-                      child: Column(
-                        children: const [
-                          Text(
-                            "Atur ulang sandi baru",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                    // Jika link expired, tampilkan error message
+                    if (expiredError != null) ...[
+                      Center(
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
+                              size: 48,
                             ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            "Masukkan sandi baru Anda",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey, fontSize: 15),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    // Password input
-                    CustomInput(
-                      controller: passCtrl,
-                      label: "Buat Sandi Baru",
-                      icon: Icons.lock_outline,
-                      obscure: true,
-                      onChanged: _updatePasswordIndicators,
-                    ),
-                    const SizedBox(height: 10),
-                    _CriteriaRow(ok: _hasMinLen, text: 'Minimal 8 karakter'),
-                    _CriteriaRow(
-                      ok: _hasUpperLower,
-                      text: 'Harus mengandung huruf besar dan huruf kecil',
-                    ),
-                    _CriteriaRow(
-                      ok: _hasDigit,
-                      text: 'Harus mengandung angka (0-9)',
-                    ),
-                    _CriteriaRow(
-                      ok: _hasSymbol,
-                      text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
-                    ),
-                    const SizedBox(height: 15),
-                    // Confirm password input
-                    CustomInput(
-                      controller: confirmCtrl,
-                      label: "Konfirmasi Sandi",
-                      icon: Icons.lock_outline,
-                      obscure: true,
-                    ),
-                    const SizedBox(height: 18),
-                    // Submit button
-                    loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1B5E20),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                              minimumSize: const Size(double.infinity, 50),
-                            ),
-                            onPressed: _submit,
-                            child: const Text(
-                              "Atur Ulang",
-                              style: TextStyle(
-                                color: Colors.white,
+                            const SizedBox(height: 16),
+                            Text(
+                              expiredError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ),
-                    const SizedBox(height: 12),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1B5E20),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                                minimumSize: const Size(double.infinity, 50),
+                              ),
+                              onPressed: () => Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const LoginScreen(),
+                                ),
+                              ),
+                              child: const Text(
+                                "Kembali ke Login",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      // Title & subtitle
+                      Center(
+                        child: Column(
+                          children: const [
+                            Text(
+                              "Atur ulang sandi baru",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              "Masukkan sandi baru Anda",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      // Password input
+                      CustomInput(
+                        controller: passCtrl,
+                        label: "Buat Sandi Baru",
+                        icon: Icons.lock_outline,
+                        obscure: true,
+                        onChanged: _updatePasswordIndicators,
+                      ),
+                      const SizedBox(height: 10),
+                      _CriteriaRow(ok: _hasMinLen, text: 'Minimal 8 karakter'),
+                      _CriteriaRow(
+                        ok: _hasUpperLower,
+                        text: 'Harus mengandung huruf besar dan huruf kecil',
+                      ),
+                      _CriteriaRow(
+                        ok: _hasDigit,
+                        text: 'Harus mengandung angka (0-9)',
+                      ),
+                      _CriteriaRow(
+                        ok: _hasSymbol,
+                        text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
+                      ),
+                      const SizedBox(height: 15),
+                      // Confirm password input
+                      CustomInput(
+                        controller: confirmCtrl,
+                        label: "Konfirmasi Sandi",
+                        icon: Icons.lock_outline,
+                        obscure: true,
+                      ),
+                      const SizedBox(height: 18),
+                      // Submit button
+                      loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1B5E20),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                                minimumSize: const Size(double.infinity, 50),
+                              ),
+                              onPressed: _submit,
+                              child: const Text(
+                                "Atur Ulang",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                 ),
               ),

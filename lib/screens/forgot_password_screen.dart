@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import '../widgets/custom_input.dart';
 import 'check_email_screen.dart';
@@ -14,27 +15,68 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final emailCtrl = TextEditingController();
   final auth = AuthService();
   bool loading = false;
+  String? errorMsg;
 
   void _sendReset() async {
     final email = emailCtrl.text.trim();
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    setState(() => errorMsg = null);
     if (email.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Masukkan email')));
+      setState(() => errorMsg = 'Email belum dimasukkan!');
+      return;
+    }
+    if (!emailRegex.hasMatch(email)) {
+      setState(
+        () => errorMsg = 'Format email tidak valid! Contoh: nama@gmail.com',
+      );
       return;
     }
     setState(() => loading = true);
     try {
+      print('🔍 DEBUG: Checking email: $email');
+      final methods = await auth.getSignInMethodsForEmail(email);
+      print('🔍 DEBUG: Sign-in methods for $email: $methods');
+
+      // Jika tidak ada di Auth, cek di Firestore
+      if (methods == null || methods.isEmpty) {
+        print('🔍 DEBUG: Email not found in Auth, checking Firestore...');
+        final firestore = FirebaseFirestore.instance;
+        final query = await firestore
+            .collection('users')
+            .where('email', isEqualTo: email)
+            .get();
+
+        if (query.docs.isEmpty) {
+          print('🔍 DEBUG: Email not found in Firestore either');
+          setState(
+            () => errorMsg =
+                'Email belum pernah terdaftar! Silakan cek kembali atau daftar akun baru.',
+          );
+          setState(() => loading = false);
+          return;
+        }
+        print('🔍 DEBUG: Email found in Firestore');
+      }
+
+      // Email valid dan terdaftar, kirim reset password
+      print('🔍 DEBUG: Email found, sending reset password email');
       await auth.resetPassword(email);
       if (!mounted) return;
+      print('🔍 DEBUG: Reset password email sent successfully');
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const CheckEmailScreen()),
       );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+      print('🔍 DEBUG: Error in _sendReset: $e');
+      String msg = 'Gagal: $e';
+      if (e.toString().contains('expired') ||
+          e.toString().contains('OOB code')) {
+        msg = 'Link reset sudah kadaluarsa, silakan request ulang.';
+      }
+      setState(() => errorMsg = msg);
     } finally {
       setState(() => loading = false);
     }
@@ -126,6 +168,36 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       label: "Masukkan Email",
                       icon: Icons.email_outlined,
                     ),
+                    if (errorMsg != null) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: 6,
+                          left: 4,
+                          right: 4,
+                          bottom: 2,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                errorMsg!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     // Submit button
                     loading
