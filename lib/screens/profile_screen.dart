@@ -6,6 +6,36 @@ import 'profile_image_picker_dialog.dart';
 // import 'reset_password_screen.dart';
 import 'login_screen.dart';
 
+// Widget to display a single password requirement row
+class CriteriaRow extends StatelessWidget {
+  final bool ok;
+  final String text;
+
+  const CriteriaRow({Key? key, required this.ok, required this.text}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ok ? const Color(0xFF10B981) : Colors.redAccent;
+    final icon = ok ? Icons.check_circle : Icons.close_rounded;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -23,6 +53,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool oldPassVisible = false;
     bool newPassVisible = false;
     bool confirmPassVisible = false;
+    bool showCriteria = false;
+    bool hasMinLen = false;
+    bool hasUpperLower = false;
+    bool hasDigit = false;
+    bool hasSymbol = false;
+
+    List<String> _passwordIssues(String password) {
+      final issues = <String>[];
+      if (password.length < 8) {
+        issues.add('• Minimal 8 karakter');
+      }
+      final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+      final hasLower = RegExp(r'[a-z]').hasMatch(password);
+      if (!(hasUpper && hasLower)) {
+        issues.add('• Harus mengandung huruf besar dan huruf kecil');
+      }
+      final digit = RegExp(r'\d').hasMatch(password);
+      if (!digit) {
+        issues.add('• Harus mengandung angka (0-9)');
+      }
+      final symbol = RegExp(r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]').hasMatch(password);
+      if (!symbol) {
+        issues.add('• Harus mengandung simbol (mis. !@#\$%^&*)');
+      }
+      return issues;
+    }
 
     await showDialog(
       context: context,
@@ -51,23 +107,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                TextField(
-                  controller: newPassController,
-                  obscureText: !newPassVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Kata sandi baru',
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        newPassVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed: () => setStateDialog(
-                        () => newPassVisible = !newPassVisible,
+                Focus(
+                  onFocusChange: (focused) {
+                    if (focused) setStateDialog(() => showCriteria = true);
+                  },
+                  child: TextField(
+                    controller: newPassController,
+                    obscureText: !newPassVisible,
+                    decoration: InputDecoration(
+                      labelText: 'Kata sandi baru',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          newPassVisible ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        onPressed: () => setStateDialog(() => newPassVisible = !newPassVisible),
                       ),
                     ),
+                    onChanged: (v) {
+                      setStateDialog(() {
+                        showCriteria = true;
+                        hasMinLen = v.length >= 8;
+                        final up = RegExp(r'[A-Z]').hasMatch(v);
+                        final low = RegExp(r'[a-z]').hasMatch(v);
+                        hasUpperLower = up && low;
+                        hasDigit = RegExp(r'\d').hasMatch(v);
+                        hasSymbol = RegExp(r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]').hasMatch(v);
+                      });
+                    },
                   ),
                 ),
+                if (showCriteria || newPassController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  CriteriaRow(ok: hasMinLen, text: 'Minimal 8 karakter'),
+                  CriteriaRow(ok: hasUpperLower, text: 'Harus mengandung huruf besar dan huruf kecil'),
+                  CriteriaRow(ok: hasDigit, text: 'Harus mengandung angka (0-9)'),
+                  CriteriaRow(ok: hasSymbol, text: 'Harus mengandung simbol (mis. !@#\$%^&*)'),
+                ],
                 TextField(
                   controller: confirmPassController,
                   obscureText: !confirmPassVisible,
@@ -112,10 +187,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     setStateDialog(() => errorMsg = 'Semua kolom wajib diisi');
                     return;
                   }
-                  if (newPass.length < 6) {
-                    setStateDialog(
-                      () => errorMsg = 'Sandi baru minimal 6 karakter',
-                    );
+                  final issues = _passwordIssues(newPass);
+                  if (issues.isNotEmpty) {
+                    setStateDialog(() => errorMsg = 'Password tidak valid:\n${issues.join('\n')}');
                     return;
                   }
                   if (newPass != confirmPass) {
@@ -309,20 +383,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final result = await showDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Edit $field'),
-          content: TextField(controller: controller, autofocus: true),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Simpan'),
-            ),
-          ],
-        ),
+        builder: (context) {
+          String? localError;
+          return StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return AlertDialog(
+                title: Text('Edit $field'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(controller: controller, autofocus: true),
+                    if (localError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          localError!,
+                          style: const TextStyle(color: Colors.red, fontSize: 13),
+                        ),
+                      ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Batal'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      final text = controller.text.trim();
+                      if (text.isEmpty) {
+                        setStateDialog(() => localError = 'Nama tidak boleh kosong');
+                        return;
+                      }
+                      Navigator.pop(context, text);
+                    },
+                    child: const Text('Simpan'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       );
 
       if (result != null && result.isNotEmpty && result != currentValue) {
