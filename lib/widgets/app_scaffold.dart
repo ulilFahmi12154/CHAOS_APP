@@ -320,35 +320,20 @@ class _AppScaffoldState extends State<AppScaffold> {
   void _navigateTo(BuildContext context, int index) {
     if (index == widget.currentIndex) return;
 
-    // Navigasi instant dengan cached screen - tidak ada loading
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) {
-          // Gunakan cached screen untuk instant loading
-          return _getScreen(index);
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Transisi sangat cepat untuk navigasi instant
-          const curve = Curves.easeOut;
+    // Use the app-level named routes so MainNavigationScreen remains
+    // the single source of truth for the bottom navigation. This avoids
+    // pushing raw screen widgets (that might not include the nav bar)
+    // and prevents visual corruption when switching from the
+    // notifications route back into the main app.
+    final routeForIndex = <int, String>{
+      0: '/kontrol',
+      1: '/history',
+      2: '/home',
+      3: '/settings',
+      4: '/profile',
+    };
 
-          var fadeAnimation = Tween(
-            begin: 0.0,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: animation, curve: curve));
-
-          var scaleAnimation = Tween(
-            begin: 0.98,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: animation, curve: curve));
-
-          return FadeTransition(
-            opacity: fadeAnimation,
-            child: ScaleTransition(scale: scaleAnimation, child: child),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 180),
-        reverseTransitionDuration: const Duration(milliseconds: 150),
-      ),
-    );
+    final routeName = routeForIndex[index] ?? '/home';
+    Navigator.of(context).pushReplacementNamed(routeName);
   }
 }
