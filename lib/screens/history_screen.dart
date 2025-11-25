@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -15,11 +16,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   String? _activeVarietas;
   final TransformationController _zoomController = TransformationController();
+  StreamSubscription<DatabaseEvent>? _historySubscription;
 
   // Tab selections
   int _selectedDataType =
       0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara
-  int _selectedTimeFilter = 0; // 0: Hari Ini, 1: Minggu Ini, 2: Bulan Ini
+  int _selectedTimeFilter = 0; // 0: Hari Ini, 1: Bulan Ini, 2: Tahun Ini
 
   List<Map<String, dynamic>> _historyData = [];
   bool _isLoading = true;
@@ -36,6 +38,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   void dispose() {
+    _historySubscription?.cancel();
     _zoomController.dispose();
     super.dispose();
   }
@@ -62,146 +65,174 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       _activeVarietas = varietasKey;
 
-      await _loadHistoryData(varietasKey);
+      // Initial load + start realtime listener
+      final ref = await _resolveHistoryRef(varietasKey);
+      await _loadHistoryDataFromRef(ref);
+      _subscribeHistory(ref);
     } catch (e) {
       print('Error loading active varietas/history: $e');
     }
     setState(() => _isLoading = false);
   }
 
-  Future<void> _loadHistoryData(String? varietasKey) async {
+  Future<DatabaseReference> _resolveHistoryRef(String? varietasKey) async {
+    // Try modern path first then fallbacks
+    if (varietasKey != null && varietasKey.isNotEmpty) {
+      final primary = _dbRef
+          .child('smartfarm')
+          .child('history')
+          .child(varietasKey);
+      if ((await primary.get()).exists) return primary;
+      final alt = _dbRef.child(varietasKey);
+      if ((await alt.get()).exists) return alt;
+    }
+    final legacyPrimary = _dbRef
+        .child('smartfarm')
+        .child('history')
+        .child('dewata_f1');
+    if ((await legacyPrimary.get()).exists) return legacyPrimary;
+    return _dbRef.child('dewata_f1'); // last resort
+  }
+
+  Future<void> _loadHistoryDataFromRef(DatabaseReference ref) async {
     setState(() => _isLoading = true);
-
     try {
-      // Determine history node to load based on user's active varietas.
-      // Prefer smartfarm/history/<varietas>, fallback to <varietas>, and finally legacy 'dewata_f1'.
-      DataSnapshot? chosen;
-      if (varietasKey != null && varietasKey.isNotEmpty) {
-        final primary = await _dbRef
-            .child('smartfarm')
-            .child('history')
-            .child(varietasKey)
-            .get();
-        if (primary.exists) {
-          chosen = primary;
-        } else {
-          final fallback = await _dbRef.child(varietasKey).get();
-          if (fallback.exists) chosen = fallback;
-        }
-      }
-
-      var snapshot = chosen;
-      if (snapshot == null || !snapshot.exists) {
-        // Final fallback for older data paths
-        snapshot = await _dbRef
-            .child('smartfarm')
-            .child('history')
-            .child('dewata_f1')
-            .get();
-        if (!snapshot.exists) {
-          snapshot = await _dbRef.child('dewata_f1').get();
-        }
-      }
-
-      if (snapshot.exists) {
-        List<Map<String, dynamic>> tempData = [];
-        Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
-
-        data.forEach((dateKey, dateValue) {
-          if (dateValue is Map) {
-            dateValue.forEach((timeKey, timeValue) {
-              if (timeValue is Map) {
-                // Normalize values: timestamps from the device may be in
-                // seconds (10-digit) or milliseconds (13-digit). Also sensor
-                // values may be stored as strings — coerce to numbers.
-                int toMillis(dynamic ts) {
-                  if (ts == null) return 0;
-                  if (ts is int) {
-                    // seconds -> convert to ms
-                    if (ts < 100000000000) return ts * 1000;
-                    return ts;
-                  }
-                  if (ts is String) {
-                    final parsed = int.tryParse(ts);
-                    if (parsed != null) {
-                      if (parsed < 100000000000) return parsed * 1000;
-                      return parsed;
-                    }
-                  }
-                  if (ts is double) {
-                    final asInt = ts.toInt();
-                    if (asInt < 100000000000) return asInt * 1000;
-                    return asInt;
-                  }
-                  return 0;
-                }
-
-                double toDouble(dynamic v) {
-                  if (v == null) return 0.0;
-                  if (v is double) return v;
-                  if (v is int) return v.toDouble();
-                  if (v is String) return double.tryParse(v) ?? 0.0;
-                  return 0.0;
-                }
-
-                tempData.add({
-                  'date': dateKey,
-                  'timeKey': timeKey,
-                  'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
-                  'suhu': toDouble(timeValue['suhu']),
-                  'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
-                  'kelembapan_udara': toDouble(
-                    timeValue['kelembapan_udara'] ??
-                        timeValue['kelembaban_udara'],
-                  ),
-                  'timestamp': toMillis(timeValue['timestamp']),
-                });
-              }
-            });
-          }
-        });
-
-        // Sort by timestamp
-        tempData.sort(
-          (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int),
-        );
-
-        setState(() {
-          _historyData = tempData;
-          _calculateStats();
-        });
-      }
+      final snapshot = await ref.get();
+      _applyHistorySnapshot(snapshot.value);
     } catch (e) {
       print('Error loading history data: $e');
     }
-
     setState(() => _isLoading = false);
   }
 
-  List<Map<String, dynamic>> _getFilteredData() {
-    DateTime now = DateTime.now();
-    DateTime startDate;
+  void _subscribeHistory(DatabaseReference ref) {
+    _historySubscription?.cancel();
+    _historySubscription = ref.onValue.listen((event) {
+      _applyHistorySnapshot(event.snapshot.value);
+    });
+  }
 
-    switch (_selectedTimeFilter) {
-      case 0: // Hari Ini
-        startDate = DateTime(now.year, now.month, now.day);
-        break;
-      case 1: // Minggu Ini
-        startDate = now.subtract(Duration(days: 7));
-        break;
-      case 2: // Bulan Ini
-        startDate = DateTime(now.year, now.month, 1);
-        break;
-      default:
-        startDate = DateTime(now.year, now.month, now.day);
+  void _applyHistorySnapshot(dynamic rawValue) {
+    if (rawValue == null || rawValue is! Map) {
+      setState(() {
+        _historyData = [];
+        _calculateStats();
+      });
+      return;
+    }
+    Map<dynamic, dynamic> data = rawValue as Map<dynamic, dynamic>;
+    List<Map<String, dynamic>> tempData = [];
+
+    int toMillis(dynamic ts) {
+      if (ts == null) return 0;
+      if (ts is int) {
+        if (ts < 100000000000) return ts * 1000; // seconds -> ms
+        return ts;
+      }
+      if (ts is String) {
+        final parsed = int.tryParse(ts);
+        if (parsed != null) {
+          if (parsed < 100000000000) return parsed * 1000;
+          return parsed;
+        }
+      }
+      if (ts is double) {
+        final asInt = ts.toInt();
+        if (asInt < 100000000000) return asInt * 1000;
+        return asInt;
+      }
+      return 0;
     }
 
-    return _historyData.where((item) {
-      int timestamp = item['timestamp'] as int;
-      DateTime itemDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      // include items on or after startDate
-      return !itemDate.isBefore(startDate);
-    }).toList();
+    double toDouble(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is double) return v;
+      if (v is int) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+
+    data.forEach((dateKey, dateValue) {
+      if (dateValue is Map) {
+        dateValue.forEach((timeKey, timeValue) {
+          if (timeValue is Map) {
+            DateTime? dateFromKey;
+            try {
+              dateFromKey = DateFormat('yyyy-MM-dd').parse(dateKey);
+            } catch (_) {}
+
+            final parsedTs = toMillis(timeValue['timestamp']);
+            final effectiveTs =
+                parsedTs < DateTime(2005).millisecondsSinceEpoch &&
+                    dateFromKey != null
+                ? dateFromKey.millisecondsSinceEpoch
+                : parsedTs;
+
+            tempData.add({
+              'date': dateKey,
+              'timeKey': timeKey,
+              'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
+              'suhu': toDouble(timeValue['suhu']),
+              'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
+              'kelembapan_udara': toDouble(
+                timeValue['kelembapan_udara'] ?? timeValue['kelembaban_udara'],
+              ),
+              'timestamp': effectiveTs,
+              'effectiveDate': dateFromKey?.millisecondsSinceEpoch,
+            });
+          }
+        });
+      }
+    });
+
+    tempData.sort(
+      (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int),
+    );
+    setState(() {
+      _historyData = tempData;
+      _calculateStats();
+    });
+  }
+
+  List<Map<String, dynamic>> _getFilteredData() {
+    final now = DateTime.now();
+    if (_selectedTimeFilter == 0) {
+      // Hari Ini: data dengan tanggal sama; jika kosong gunakan 24 jam terakhir sebagai fallback
+      List<Map<String, dynamic>> today = _historyData.where((item) {
+        final ts = item['timestamp'] as int;
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        return dt.year == now.year &&
+            dt.month == now.month &&
+            dt.day == now.day;
+      }).toList();
+
+      if (today.isEmpty) {
+        final cutoff = now
+            .subtract(const Duration(days: 1))
+            .millisecondsSinceEpoch;
+        today = _historyData.where((item) {
+          final ts = item['timestamp'] as int;
+          return ts >= cutoff;
+        }).toList();
+      }
+      return today;
+    }
+
+    if (_selectedTimeFilter == 1) {
+      return _historyData.where((item) {
+        final ts = item['timestamp'] as int;
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        return dt.year == now.year && dt.month == now.month;
+      }).toList();
+    }
+    if (_selectedTimeFilter == 2) {
+      return _historyData.where((item) {
+        final ts = item['timestamp'] as int;
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        return dt.year == now.year;
+      }).toList();
+    }
+    return [];
   }
 
   void _calculateStats() {
@@ -366,7 +397,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 const SizedBox(height: 16),
 
-                // Time Filter Choice Chips
+                // Time Filter Choice Chips (Hari Ini / Bulan Ini / Tahun Ini)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _buildTimeFilterChips(),
@@ -539,7 +570,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // Removed _buildDataTypeChips (replaced by 2x2 GridView)
 
   Widget _buildTimeFilterChips() {
-    final labels = const ['Hari Ini', 'Minggu Ini', 'Bulan Ini'];
+    final labels = const ['Hari Ini', 'Bulan Ini', 'Tahun Ini'];
     return Wrap(
       spacing: 8,
       runSpacing: 8,
