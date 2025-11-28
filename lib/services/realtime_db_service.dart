@@ -105,6 +105,21 @@ class RealtimeDbService {
     if (value is double) return value;
     return null;
   }
+
+  /// Stream untuk EC/TDS
+  Stream<int?> ecStream(String varietas) {
+    return _dbRef
+        .child('smartfarm/sensors/$varietas/ec')
+        .onValue
+        .map((event) => event.snapshot.value as int?);
+  }
+
+  /// Get one-time data untuk EC/TDS
+  Future<int?> getEc(String varietas) async {
+    final snapshot = await _dbRef.child('smartfarm/sensors/$varietas/ec').get();
+    return snapshot.value as int?;
+  }
+
   // ========== SETTINGS MANAGEMENT ==========
 
   /// Get settings untuk user tertentu

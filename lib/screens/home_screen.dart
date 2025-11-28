@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/realtime_db_service.dart';
 import 'package:chaos_app/screens/plant_detail_screen.dart';
+import 'package:chaos_app/screens/warning_detail_screen.dart';
 
 Widget _buildSensorCard(
   String title,
@@ -96,8 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final RealtimeDbService _dbService = RealtimeDbService();
   String? activeVarietas;
   bool pompaStatus = false;
-  // Track which realtime warnings have been mirrored to Firestore to avoid duplicates
-  final Set<String> _writtenWarningKeys = {};
 
   // Ambang batas dari settings (default values)
   double suhuMin = 22, suhuMax = 28;
@@ -106,6 +105,13 @@ class _HomeScreenState extends State<HomeScreen> {
   double phMin = 5.8, phMax = 6.5;
   double luxMin = 1800, luxMax = 4095;
 
+  // Threshold NPK (default values)
+  double nitrogenMin = 0, nitrogenMax = 4095;
+  double phosphorusMin = 0, phosphorusMax = 4095;
+  double potassiumMin = 0, potassiumMax = 4095;
+
+  // Threshold EC/TDS (default values)
+  double ecMin = 500, ecMax = 2000;
   @override
   void initState() {
     super.initState();
@@ -136,6 +142,18 @@ class _HomeScreenState extends State<HomeScreen> {
           phMax = (data['ph_max'] ?? 6.5).toDouble();
           luxMin = (data['light_min'] ?? 1800).toDouble();
           luxMax = (data['light_max'] ?? 4095).toDouble();
+
+          // Load NPK threshold
+          nitrogenMin = (data['nitrogen_min'] ?? 0).toDouble();
+          nitrogenMax = (data['nitrogen_max'] ?? 4095).toDouble();
+          phosphorusMin = (data['phosphorus_min'] ?? 0).toDouble();
+          phosphorusMax = (data['phosphorus_max'] ?? 4095).toDouble();
+          potassiumMin = (data['potassium_min'] ?? 0).toDouble();
+          potassiumMax = (data['potassium_max'] ?? 4095).toDouble();
+
+          // Load EC/TDS threshold
+          ecMin = (data['ec_min'] ?? 500).toDouble();
+          ecMax = (data['ec_max'] ?? 2000).toDouble();
         });
       }
     } catch (e) {
@@ -189,9 +207,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Stream<List<Map<String, dynamic>>> getWarningStream() {
-    final path = activeVarietas != null && activeVarietas!.isNotEmpty
-        ? 'smartfarm/warning/$activeVarietas'
-        : 'smartfarm/warning/default';
+    final varietasToUse = activeVarietas ?? 'default';
+
+    // Ambil tanggal hari ini untuk path warning
+    final now = DateTime.now();
+    final dateStr =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    final path = 'smartfarm/warning/$varietasToUse/$dateStr';
 
     final db = FirebaseDatabase.instance.ref(path);
     return db.onValue.map((event) {
@@ -199,13 +222,18 @@ class _HomeScreenState extends State<HomeScreen> {
       List<Map<String, dynamic>> warnings = [];
 
       if (data is Map) {
-        // Data sekarang berupa Map dengan keys: suhu, tanah, udara, cahaya
-        data.forEach((key, value) {
-          if (value is Map) {
-            final warning = Map<String, dynamic>.from(value);
-            // Tambahkan sensor type dari key
-            warning['sensor'] = key.toString();
-            warnings.add(warning);
+        // Data struktur: {suhu: {push1: {...}, push2: {...}}, tanah: {...}, ...}
+        data.forEach((sensorType, sensorData) {
+          if (sensorData is Map) {
+            // Setiap sensor type punya multiple warnings (dari pushJSON)
+            sensorData.forEach((pushKey, warningData) {
+              if (warningData is Map) {
+                final warning = Map<String, dynamic>.from(warningData);
+                // Tambahkan sensor type
+                warning['sensor'] = sensorType.toString();
+                warnings.add(warning);
+              }
+            });
           }
         });
 
@@ -215,6 +243,11 @@ class _HomeScreenState extends State<HomeScreen> {
           final timeB = b['timestamp'] ?? 0;
           return timeB.compareTo(timeA);
         });
+
+        // Ambil hanya 4 warning terbaru
+        if (warnings.length > 4) {
+          warnings = warnings.sublist(0, 4);
+        }
       }
 
       return warnings;
@@ -295,8 +328,190 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 16),
           _buildSensorGrid(),
           const SizedBox(height: 16),
+          _buildNutrisiCard(),
+          const SizedBox(height: 16),
           _buildRecommendationRow(),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // Card untuk menampilkan nutrisi NPK (Real-time dari Firebase)
+  Widget _buildNutrisiCard() {
+    final varietasToUse = activeVarietas ?? 'default';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: activeVarietas == null || activeVarietas!.isEmpty
+          ? Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade700),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Pilih varietas untuk melihat nutrisi NPK',
+                    style: TextStyle(fontSize: 14, color: Colors.orange),
+                  ),
+                ),
+              ],
+            )
+          : StreamBuilder<dynamic>(
+              stream: FirebaseDatabase.instance
+                  .ref('smartfarm/sensors/$varietasToUse')
+                  .onValue
+                  .map((e) => e.snapshot.value),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data == null) {
+                  return Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange.shade700),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Menunggu data sensor...',
+                          style: TextStyle(fontSize: 14, color: Colors.orange),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                final sensorData = snapshot.data as Map<dynamic, dynamic>;
+                final nitrogen = (sensorData['nitrogen'] ?? 0).toDouble();
+                final phosphorus = (sensorData['phosphorus'] ?? 0).toDouble();
+                final potassium = (sensorData['potassium'] ?? 0).toDouble();
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.science, color: Colors.green.shade700),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Nutrisi Tanaman (NPK)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _nutrisiItem(
+                            'N',
+                            'Nitrogen',
+                            nitrogen,
+                            nitrogenMin,
+                            nitrogenMax,
+                            Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _nutrisiItem(
+                            'P',
+                            'Phosphorus',
+                            phosphorus,
+                            phosphorusMin,
+                            phosphorusMax,
+                            Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _nutrisiItem(
+                            'K',
+                            'Potassium',
+                            potassium,
+                            potassiumMin,
+                            potassiumMax,
+                            Colors.purple,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _nutrisiItem(
+    String shortLabel,
+    String fullLabel,
+    double value,
+    double minBatas,
+    double maxBatas,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            shortLabel,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            fullLabel,
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value.toStringAsFixed(0),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ideal: ${minBatas.toStringAsFixed(0)} - ${maxBatas.toStringAsFixed(0)}',
+            style: const TextStyle(fontSize: 9, color: Colors.grey),
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ((value - minBatas) / (maxBatas - minBatas)).clamp(
+                0.0,
+                1.0,
+              ),
+              minHeight: 4,
+              backgroundColor: Colors.grey.shade300,
+              valueColor: AlwaysStoppedAnimation<Color>(color.withOpacity(0.7)),
+            ),
+          ),
         ],
       ),
     );
@@ -513,47 +728,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
-    }
-  }
-
-  // Mirror new realtime warnings into Firestore 'notifications' collection.
-  // This is executed asynchronously and guarded by `_writtenWarningKeys`.
-  Future<void> _syncWarningsToFirestore(
-    List<Map<String, dynamic>> warnings,
-  ) async {
-    final firestore = FirebaseFirestore.instance;
-    for (final w in warnings) {
-      try {
-        final sensor = (w['sensor'] ?? 'sensor').toString();
-        final message = (w['message'] ?? '').toString();
-        final level = (w['level'] ?? '').toString();
-
-        // Use provided timestamp if available to form a stable key, otherwise use message hash
-        final tsValue = w['timestamp'];
-        String key;
-        if (tsValue != null) {
-          key = '${sensor}_$tsValue';
-        } else {
-          key = '${sensor}_${message.hashCode}';
-        }
-
-        if (_writtenWarningKeys.contains(key)) continue;
-
-        await firestore.collection('notifications').add({
-          'title': sensor, // short title
-          'message': message,
-          'level': level,
-          'sensor': sensor,
-          'source': 'realtime_warning',
-          // store server timestamp to have consistent ordering in Firestore
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-
-        _writtenWarningKeys.add(key);
-      } catch (e) {
-        // ignore write errors for now, but don't crash the UI
-        debugPrint('Failed to sync warning to Firestore: $e');
-      }
     }
   }
 
@@ -799,22 +973,6 @@ class _HomeScreenState extends State<HomeScreen> {
           return levelA.compareTo(levelB);
         });
 
-        // Schedule mirroring of new warnings to Firestore after this frame
-        final toWrite = activeWarnings.where((w) {
-          final sensor = (w['sensor'] ?? 'sensor').toString();
-          final ts = w['timestamp'];
-          final key = ts != null
-              ? '${sensor}_$ts'
-              : '${sensor}_${(w['message'] ?? '').toString().hashCode}';
-          return !_writtenWarningKeys.contains(key);
-        }).toList();
-
-        if (toWrite.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _syncWarningsToFirestore(toWrite);
-          });
-        }
-
         if (activeWarnings.isEmpty) {
           return Container(
             padding: const EdgeInsets.all(16),
@@ -872,56 +1030,128 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               ...activeWarnings.map(
-                (w) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: w['level'] == 'critical'
-                        ? Colors.red.shade100
-                        : Colors.orange.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: w['level'] == 'critical'
-                          ? Colors.red.shade300
-                          : Colors.orange.shade300,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        w['level'] == 'critical' ? Icons.error : Icons.warning,
-                        color: w['level'] == 'critical'
-                            ? Colors.red.shade700
-                            : Colors.orange.shade700,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              w['type'] ?? 'Sensor',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: w['level'] == 'critical'
-                                    ? Colors.red.shade900
-                                    : Colors.orange.shade900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              w['message'] ?? '',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade800,
-                              ),
-                            ),
-                          ],
+                (w) => GestureDetector(
+                  onTap: () {
+                    // Get sensor type untuk match dengan threshold
+                    final sensorType = (w['sensor'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    double? minVal, maxVal;
+                    String unit = '';
+
+                    // Match sensor dengan threshold yang sesuai
+                    if (sensorType.contains('suhu')) {
+                      minVal = suhuMin;
+                      maxVal = suhuMax;
+                      unit = '°C';
+                    } else if (sensorType.contains('kelembapan')) {
+                      minVal = humMin;
+                      maxVal = humMax;
+                      unit = '%';
+                    } else if (sensorType.contains('tanah')) {
+                      minVal = soilMin;
+                      maxVal = soilMax;
+                      unit = '';
+                    } else if (sensorType.contains('cahaya')) {
+                      minVal = luxMin;
+                      maxVal = luxMax;
+                      unit = 'lux';
+                    } else if (sensorType.contains('ph')) {
+                      minVal = phMin;
+                      maxVal = phMax;
+                      unit = '';
+                    } else if (sensorType.contains('nitrogen')) {
+                      minVal = nitrogenMin;
+                      maxVal = nitrogenMax;
+                      unit = '';
+                    } else if (sensorType.contains('phosphorus')) {
+                      minVal = phosphorusMin;
+                      maxVal = phosphorusMax;
+                      unit = '';
+                    } else if (sensorType.contains('potassium')) {
+                      minVal = potassiumMin;
+                      maxVal = potassiumMax;
+                      unit = '';
+                    } else if (sensorType.contains('ec') ||
+                        sensorType.contains('tds')) {
+                      minVal = ecMin;
+                      maxVal = ecMax;
+                      unit = 'µS/cm';
+                    }
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => WarningDetailScreen(
+                          warning: w,
+                          minThreshold: minVal,
+                          maxThreshold: maxVal,
+                          actualValue: w['value'] != null
+                              ? double.tryParse(w['value'].toString())
+                              : null,
+                          unit: unit,
                         ),
                       ),
-                    ],
+                    );
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: w['level'] == 'critical'
+                          ? Colors.red.shade100
+                          : Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: w['level'] == 'critical'
+                            ? Colors.red.shade300
+                            : Colors.orange.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          w['level'] == 'critical'
+                              ? Icons.error
+                              : Icons.warning,
+                          color: w['level'] == 'critical'
+                              ? Colors.red.shade700
+                              : Colors.orange.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                w['type'] ?? 'Sensor',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: w['level'] == 'critical'
+                                      ? Colors.red.shade900
+                                      : Colors.orange.shade900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                w['message'] ?? '',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1013,7 +1243,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Container()), // Placeholder kosong untuk symmetry
+            Expanded(
+              child: _buildSensorCard(
+                'EC/TDS',
+                Icons.water,
+                Colors.teal,
+                _dbService.ecStream(varietasToUse),
+                'ADC',
+                ecMin,
+                ecMax,
+              ),
+            ),
           ],
         ),
       ],

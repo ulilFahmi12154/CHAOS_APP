@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/kontrol_screen.dart';
 import '../screens/history_screen.dart';
@@ -25,8 +24,6 @@ class AppScaffold extends StatefulWidget {
 
 class _AppScaffoldState extends State<AppScaffold> {
   int _lastOpenedMillis = 0;
-  // Cache untuk menyimpan instance screen agar tidak rebuild terus
-  static final Map<int, Widget> _cachedScreens = {};
 
   @override
   void initState() {
@@ -43,38 +40,22 @@ class _AppScaffoldState extends State<AppScaffold> {
     } catch (_) {}
   }
 
-  Future<void> _markNotificationsOpenedInFirestore() async {
+  Future<void> _markNotificationsOpenedInPreferences() async {
     try {
-      final col = FirebaseFirestore.instance.collection('notifications');
-      final snap = await col
-          .orderBy('timestamp', descending: true)
-          .limit(100)
-          .get();
-      if (snap.docs.isEmpty) return;
-      final batch = FirebaseFirestore.instance.batch();
-      var updates = 0;
-      for (final d in snap.docs) {
-        final data = d.data();
-        // Only update docs that are not already opened/read to minimize writes
-        if (data['opened'] == true && data['read'] == true) continue;
-        final Map<String, dynamic> upd = {};
-        if (data['opened'] != true) upd['opened'] = true;
-        if (data['read'] != true) upd['read'] = true;
-        if (upd.isNotEmpty) {
-          batch.update(d.reference, upd);
-          updates++;
-        }
-      }
-      if (updates > 0) await batch.commit();
-    } catch (e) {
-      debugPrint('Failed to mark notifications opened from AppScaffold: $e');
-    }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'notifications_last_opened',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      setState(() {
+        _lastOpenedMillis = DateTime.now().millisecondsSinceEpoch;
+      });
+    } catch (_) {}
   }
 
   Future<void> _markOpenedNow() async {
     try {
-      // Mark in Firestore first so queries in other clients update quickly.
-      await _markNotificationsOpenedInFirestore();
+      // Mark last opened time in SharedPreferences only
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('notifications_last_opened', now);
@@ -82,23 +63,24 @@ class _AppScaffoldState extends State<AppScaffold> {
         _lastOpenedMillis = now;
       });
     } catch (_) {}
-    // Preload semua screen saat pertama kali
-    _preloadScreens();
-  }
-
-  void _preloadScreens() {
-    // Cache semua screen untuk navigasi instant
-    if (_cachedScreens.isEmpty) {
-      _cachedScreens[0] = const KontrolScreen();
-      _cachedScreens[1] = const HistoryScreen();
-      _cachedScreens[2] = const HomeScreen();
-      _cachedScreens[3] = const SettingsScreen();
-      _cachedScreens[4] = const ProfileScreen();
-    }
   }
 
   Widget _getScreen(int index) {
-    return _cachedScreens[index] ?? const HomeScreen();
+    // Return fresh widget instance sesuai index
+    switch (index) {
+      case 0:
+        return const KontrolScreen();
+      case 1:
+        return const HistoryScreen();
+      case 2:
+        return const HomeScreen();
+      case 3:
+        return const SettingsScreen();
+      case 4:
+        return const ProfileScreen();
+      default:
+        return const HomeScreen();
+    }
   }
 
   @override
@@ -126,98 +108,11 @@ class _AppScaffoldState extends State<AppScaffold> {
           ),
         ),
         actions: [
-          // Show unread badge if: (A) any doc has opened==false/read==false,
-          // or (B) latest notification timestamp > last-opened timestamp.
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .orderBy('timestamp', descending: true)
-                .limit(1)
-                .snapshots(),
-            builder: (context, latestSnap) {
-              bool hasUnread = false;
-              int latestMillis = 0;
-
-              if (latestSnap.hasData &&
-                  (latestSnap.data?.docs.isNotEmpty ?? false)) {
-                final first = latestSnap.data!.docs.first.data();
-                if (first is Map<String, dynamic>) {
-                  final ts = first['timestamp'];
-                  try {
-                    if (ts is Timestamp) {
-                      latestMillis = ts.toDate().millisecondsSinceEpoch;
-                    } else if (ts is int)
-                      latestMillis = ts;
-                    else
-                      latestMillis = int.tryParse(ts.toString()) ?? 0;
-                  } catch (_) {
-                    latestMillis = 0;
-                  }
-                }
-                if (latestMillis > _lastOpenedMillis) hasUnread = true;
-              }
-
-              // Also check explicit flags (opened/read)
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('notifications')
-                    .where('opened', isEqualTo: false)
-                    .limit(1)
-                    .snapshots(),
-                builder: (context, openedSnap) {
-                  if (openedSnap.hasData &&
-                      (openedSnap.data?.docs.isNotEmpty ?? false)) {
-                    hasUnread = true;
-                  }
-
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('notifications')
-                        .where('read', isEqualTo: false)
-                        .limit(1)
-                        .snapshots(),
-                    builder: (context, readSnap) {
-                      if (readSnap.hasData &&
-                          (readSnap.data?.docs.isNotEmpty ?? false)) {
-                        hasUnread = true;
-                      }
-
-                      return IconButton(
-                        icon: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            const Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                            ),
-                            if (hasUnread)
-                              Positioned(
-                                right: -1,
-                                top: -1,
-                                child: Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        onPressed: () async {
-                          await _markOpenedNow();
-                          Navigator.pushNamed(context, '/notifikasi');
-                        },
-                      );
-                    },
-                  );
-                },
-              );
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+            onPressed: () async {
+              await _markOpenedNow();
+              Navigator.pushNamed(context, '/notifikasi');
             },
           ),
         ],

@@ -40,10 +40,18 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       print('🔍 DEBUG: Code is valid');
     } catch (e) {
       print('🔍 DEBUG: Code verification failed: $e');
-      setState(
-        () => expiredError =
-            'Link reset sudah expired atau tidak valid. Silakan request ulang.',
-      );
+      String errorMessage =
+          'Link reset sudah expired atau tidak valid. Silakan request ulang.';
+
+      // Cek apakah error karena link sudah digunakan
+      if (e.toString().contains('used-too-many-times') ||
+          e.toString().contains('invalid-oob-code') ||
+          e.toString().contains('expired')) {
+        errorMessage =
+            'Link reset sudah digunakan atau sudah expired. Tidak bisa digunakan lagi.';
+      }
+
+      setState(() => expiredError = errorMessage);
     }
   }
 
@@ -235,6 +243,36 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         ),
                       ),
                     ] else ...[
+                      // Info Box - Link hanya bisa digunakan 1 kali
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          border: Border.all(color: const Color(0xFFFFE69C)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Color(0xFFFFC107),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Link reset hanya bisa digunakan 1 kali. Setelah berhasil, link akan expired.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF856404),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       // Title & subtitle
                       Center(
                         child: Column(
