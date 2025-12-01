@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../screens/kontrol_screen.dart';
-import '../screens/history_screen.dart';
-import '../screens/home_screen.dart';
-import '../screens/settings_screen.dart';
-import '../screens/profile_screen.dart';
 
 /// Template scaffold dengan app bar dan bottom navigation
 /// yang bisa digunakan di semua halaman utama
@@ -23,64 +18,9 @@ class AppScaffold extends StatefulWidget {
 }
 
 class _AppScaffoldState extends State<AppScaffold> {
-  int _lastOpenedMillis = 0;
-
   @override
   void initState() {
     super.initState();
-    _loadLastOpened();
-  }
-
-  Future<void> _loadLastOpened() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _lastOpenedMillis = prefs.getInt('notifications_last_opened') ?? 0;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _markNotificationsOpenedInPreferences() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-        'notifications_last_opened',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-      setState(() {
-        _lastOpenedMillis = DateTime.now().millisecondsSinceEpoch;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _markOpenedNow() async {
-    try {
-      // Mark last opened time in SharedPreferences only
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt('notifications_last_opened', now);
-      setState(() {
-        _lastOpenedMillis = now;
-      });
-    } catch (_) {}
-  }
-
-  Widget _getScreen(int index) {
-    // Return fresh widget instance sesuai index
-    switch (index) {
-      case 0:
-        return const KontrolScreen();
-      case 1:
-        return const HistoryScreen();
-      case 2:
-        return const HomeScreen();
-      case 3:
-        return const SettingsScreen();
-      case 4:
-        return const ProfileScreen();
-      default:
-        return const HomeScreen();
-    }
   }
 
   @override
@@ -230,5 +170,15 @@ class _AppScaffoldState extends State<AppScaffold> {
 
     final routeName = routeForIndex[index] ?? '/home';
     Navigator.of(context).pushReplacementNamed(routeName);
+  }
+
+  Future<void> _markOpenedNow() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'notifications_last_opened',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {}
   }
 }

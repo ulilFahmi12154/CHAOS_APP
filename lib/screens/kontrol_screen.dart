@@ -14,6 +14,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
   bool modeOtomatis = true;
   bool pompaState = false;
   String? activeVarietas;
+  bool _isTogglingPompa = false; // Track if pompa toggle is in progress
 
   @override
   void initState() {
@@ -52,19 +53,82 @@ class _KontrolScreenState extends State<KontrolScreen> {
   }
 
   Future<void> _togglePompa(bool state) async {
-    if (activeVarietas != null) {
-      await db
-          .child('smartfarm/commands/relay_$activeVarietas')
-          .set(state ? 1 : 0);
-      setState(() {
-        pompaState = state;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Pompa ${state ? "Dinyalakan" : "Dimatikan"}'),
-          backgroundColor: state ? Colors.green : Colors.red,
-        ),
+    print(
+      'DEBUG: _togglePompa called with state=$state, activeVarietas=$activeVarietas',
+    );
+
+    if (activeVarietas == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Silakan pilih varietas terlebih dahulu'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (_isTogglingPompa) {
+      print('DEBUG: Already toggling, returning');
+      return;
+    }
+
+    setState(() => _isTogglingPompa = true);
+    print('DEBUG: Set _isTogglingPompa to true');
+
+    try {
+      // Update Firebase command ke MULTIPLE paths supaya Wokwi pasti bisa baca
+      final commandValue = state ? 1 : 0;
+      final statusValue = state ? 'ON' : 'OFF';
+
+      // Path 1: smartfarm/commands/relay_varietas (command)
+      final commandPath1 = 'smartfarm/commands/relay_$activeVarietas';
+      print('DEBUG: Updating path 1: $commandPath1 with value: $commandValue');
+      await db.child(commandPath1).set(commandValue);
+
+      // Path 2: smartfarm/devices/pump/command (untuk Wokwi)
+      final commandPath2 = 'smartfarm/devices/pump/command';
+      print('DEBUG: Updating path 2: $commandPath2 with value: $commandValue');
+      await db.child(commandPath2).set(commandValue);
+
+      // Path 3: UPDATE SENSOR STATUS LANGSUNG (tidak tunggu Wokwi)
+      final sensorPath = 'smartfarm/sensors/$activeVarietas/pompa';
+      print(
+        'DEBUG: Updating sensor status: $sensorPath with value: $statusValue',
       );
+      await db.child(sensorPath).set(statusValue);
+
+      print('DEBUG: All Firebase updates sent successfully');
+
+      // Tunggu sebentar untuk propagasi
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Pompa ${state ? "Dinyalakan" : "Dimatikan"}'),
+            backgroundColor: state ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('DEBUG: Error in _togglePompa: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengubah status pompa: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTogglingPompa = false);
+        print('DEBUG: Set _isTogglingPompa to false');
+      }
     }
   }
 
@@ -336,80 +400,171 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (!isAuto)
-                    Column(
-                      children: [
-                        Row(
+                    StreamBuilder<dynamic>(
+                      stream: db
+                          .child('smartfarm/sensors/$activeVarietas/pompa')
+                          .onValue
+                          .map((e) => e.snapshot.value),
+                      builder: (context, pompaSnapshot) {
+                        bool isOn = pompaSnapshot.data == 'ON';
+                        print(
+                          'DEBUG: pompaSnapshot.data = ${pompaSnapshot.data}, isOn = $isOn, _isTogglingPompa = $_isTogglingPompa',
+                        );
+                        return Column(
                           children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  _togglePompa(true);
-                                },
-                                icon: const Icon(Icons.power),
-                                label: const Text('Nyalakan Pompa'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  _togglePompa(false);
-                                },
-                                icon: const Icon(Icons.power_off),
-                                label: const Text('Matikan Pompa'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: (_isTogglingPompa || isOn)
+                                        ? null
+                                        : () {
+                                            _togglePompa(true);
+                                          },
+                                    icon: const Icon(Icons.power),
+                                    label: const Text('Nyalakan Pompa'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          (_isTogglingPompa || isOn)
+                                          ? Colors.grey
+                                          : Colors.green,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: (_isTogglingPompa || !isOn)
+                                        ? null
+                                        : () {
+                                            _togglePompa(false);
+                                          },
+                                    icon: const Icon(Icons.power_off),
+                                    label: const Text('Matikan Pompa'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          (_isTogglingPompa || !isOn)
+                                          ? Colors.grey
+                                          : Colors.red,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 12),
+                            if (_isTogglingPompa)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                  ),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.blue,
+                                            ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Mengirim perintah ke pompa...',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (!isOn)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.yellow.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.yellow.shade200,
+                                  ),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.warning_amber,
+                                      color: Colors.orange,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Pompa standby. Klik "Nyalakan Pompa" untuk menyirami.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.yellow.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.yellow.shade200,
+                                  ),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.warning_amber,
+                                      color: Colors.orange,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Pompa sedang aktif. Klik "Matikan Pompa" untuk berhenti.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                           ],
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.yellow.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.yellow.shade200),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(
-                                Icons.warning_amber,
-                                color: Colors.orange,
-                                size: 20,
-                              ),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Mode Manual: Gunakan dengan hati-hati untuk menghindari kerusakan pada tanaman.',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     )
                   else
                     Container(
@@ -479,7 +634,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
-              Navigator.pushNamed(context, '/profile');
+              Navigator.pushNamed(context, '/settings');
             },
             icon: const Icon(Icons.settings),
             label: const Text('Pergi ke Pengaturan'),
