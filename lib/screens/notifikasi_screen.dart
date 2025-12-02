@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../widgets/app_scaffold.dart';
 import 'package:chaos_app/screens/warning_detail_screen.dart';
 
 Widget _buildSimpleNotifCard({
@@ -9,6 +9,7 @@ Widget _buildSimpleNotifCard({
   required String message,
   required String timeStr,
   required Color statusColor,
+  required bool isRead,
   VoidCallback? onTap,
 }) {
   return InkWell(
@@ -16,8 +17,14 @@ Widget _buildSimpleNotifCard({
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isRead ? Colors.white : const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isRead
+              ? Colors.grey.shade200
+              : const Color(0xFF10B981).withOpacity(0.3),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.06),
@@ -29,7 +36,24 @@ Widget _buildSimpleNotifCard({
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.circle, size: 8, color: statusColor),
+          Stack(
+            children: [
+              Icon(Icons.notifications, size: 24, color: statusColor),
+              if (!isRead)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -37,8 +61,8 @@ Widget _buildSimpleNotifCard({
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                    fontWeight: isRead ? FontWeight.w600 : FontWeight.w700,
                     fontSize: 14,
                   ),
                 ),
@@ -91,50 +115,135 @@ class NotifikasiScreen extends StatefulWidget {
 
 class _NotifikasiScreenState extends State<NotifikasiScreen> {
   late Stream<List<Map<String, dynamic>>> _warningStream;
+  final Set<String> _readNotifications = {};
+  String? _currentUserId;
+  String? _userVarietas;
 
   @override
   void initState() {
     super.initState();
-    _warningStream = _getWarningsFromRealtimeDB();
+    _initializeUser();
   }
 
-  /// Ambil warning dari Realtime Database (bukan Firestore)
+  Future<void> _initializeUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _currentUserId = user.uid;
+
+    // Ambil varietas user
+    final db = FirebaseDatabase.instance.ref();
+    final userSnapshot = await db.child('users').child(user.uid).get();
+
+    if (userSnapshot.exists && userSnapshot.value is Map) {
+      final userData = userSnapshot.value as Map;
+      _userVarietas =
+          (userData['active_varietas'] ??
+                  (userData['settings'] is Map
+                      ? userData['settings']['varietas']
+                      : null))
+              ?.toString();
+    }
+
+    // Fallback ke smartfarm/active_varietas
+    if (_userVarietas == null || _userVarietas!.isEmpty) {
+      final globalSnapshot = await db
+          .child('smartfarm')
+          .child('active_varietas')
+          .get();
+      if (globalSnapshot.exists) {
+        _userVarietas = globalSnapshot.value.toString();
+      }
+    }
+
+    // Load status notifikasi yang sudah dibaca
+    await _loadReadNotifications();
+
+    setState(() {
+      _warningStream = _getWarningsFromRealtimeDB();
+    });
+  }
+
+  Future<void> _loadReadNotifications() async {
+    if (_currentUserId == null) return;
+
+    final db = FirebaseDatabase.instance.ref();
+    final snapshot = await db
+        .child('users')
+        .child(_currentUserId!)
+        .child('read_notifications')
+        .get();
+
+    if (snapshot.exists && snapshot.value is Map) {
+      final readMap = snapshot.value as Map;
+      setState(() {
+        _readNotifications.clear();
+        readMap.forEach((key, value) {
+          if (value == true) {
+            _readNotifications.add(key.toString());
+          }
+        });
+      });
+    }
+  }
+
+  Future<void> _markAsRead(String notificationId) async {
+    if (_currentUserId == null) return;
+
+    final db = FirebaseDatabase.instance.ref();
+    await db
+        .child('users')
+        .child(_currentUserId!)
+        .child('read_notifications')
+        .child(notificationId)
+        .set(true);
+
+    setState(() {
+      _readNotifications.add(notificationId);
+    });
+  }
+
+  /// Ambil warning dari Realtime Database hanya untuk varietas user
   Stream<List<Map<String, dynamic>>> _getWarningsFromRealtimeDB() {
     final db = FirebaseDatabase.instance.ref();
 
-    // Ambil hari ini
+    // Ambil 7 hari terakhir
     final now = DateTime.now();
-    final dateStr =
-        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final dates = List.generate(7, (i) {
+      final date = now.subtract(Duration(days: i));
+      return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    });
+
+    if (_userVarietas == null || _userVarietas!.isEmpty) {
+      return Stream.value([]);
+    }
 
     // Path: smartfarm/warning/{varietas}/{tanggal}
-    // Ambil dari semua varietas (monitor semua)
-    final basePath = 'smartfarm/warning';
+    // Hanya ambil warning untuk varietas user
+    final varietasPath = 'smartfarm/warning/$_userVarietas';
 
-    return db.child(basePath).onValue.map((event) {
+    return db.child(varietasPath).onValue.map((event) {
       final data = event.snapshot.value;
       List<Map<String, dynamic>> allWarnings = [];
 
       if (data is Map) {
-        // data = {varietas1: {tanggal: {suhu: {...}, ...}}, varietas2: {...}}
-        data.forEach((varietasKey, varietasData) {
-          if (varietasData is Map) {
-            // varietasData = {2025-11-28: {suhu: {push1: {...}, ...}, ...}, ...}
-            varietasData.forEach((dateKey, dateData) {
-              if (dateKey.toString() == dateStr && dateData is Map) {
-                // dateData = {suhu: {push1: {...}, push2: {...}}, tanah: {...}, ...}
-                dateData.forEach((sensorType, sensorData) {
-                  if (sensorData is Map) {
-                    // sensorData = {push1: {...}, push2: {...}}
-                    sensorData.forEach((pushKey, warningData) {
-                      if (warningData is Map) {
-                        final warning = Map<String, dynamic>.from(warningData);
-                        warning['sensor'] = sensorType.toString();
-                        warning['varietas'] = varietasKey.toString();
-                        warning['sensorType'] = sensorType.toString();
-                        allWarnings.add(warning);
-                      }
-                    });
+        // data = {2025-12-01: {suhu: {...}, ...}, 2025-12-02: {...}}
+        data.forEach((dateKey, dateData) {
+          // Hanya ambil dari 7 hari terakhir
+          if (dates.contains(dateKey.toString()) && dateData is Map) {
+            // dateData = {suhu: {push1: {...}, push2: {...}}, tanah: {...}, ...}
+            dateData.forEach((sensorType, sensorData) {
+              if (sensorData is Map) {
+                // sensorData = {push1: {...}, push2: {...}}
+                sensorData.forEach((pushKey, warningData) {
+                  if (warningData is Map) {
+                    final warning = Map<String, dynamic>.from(warningData);
+                    warning['sensor'] = sensorType.toString();
+                    warning['varietas'] = _userVarietas;
+                    warning['sensorType'] = sensorType.toString();
+                    warning['date'] = dateKey.toString();
+                    warning['id'] = '$dateKey-$sensorType-$pushKey';
+                    allWarnings.add(warning);
                   }
                 });
               }
@@ -150,9 +259,9 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
         return timeB.compareTo(timeA);
       });
 
-      // Ambil hanya 20 warning terbaru
-      if (allWarnings.length > 20) {
-        allWarnings = allWarnings.sublist(0, 20);
+      // Ambil hanya 50 warning terbaru (lebih banyak untuk 7 hari)
+      if (allWarnings.length > 50) {
+        allWarnings = allWarnings.sublist(0, 50);
       }
 
       return allWarnings;
@@ -161,129 +270,160 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      currentIndex: -1,
-      body: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 24, bottom: 12),
-            child: Text(
-              'Notifikasi Peringatan',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Color.fromARGB(255, 12, 51, 13),
-              ),
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _warningStream,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+    return _userVarietas == null
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    '7 Hari Terakhir',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
 
-                final warnings = snapshot.data ?? [];
-                if (warnings.isEmpty) {
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: const [
-                      SizedBox(height: 24),
-                      Center(
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 48,
-                              color: Colors.green,
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              'Tidak ada peringatan hari ini',
-                              style: TextStyle(fontSize: 16),
+                // Notification List
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: _warningStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('Error: ${snapshot.error}'),
+                        ),
+                      );
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+
+                    final warnings = snapshot.data ?? [];
+                    if (warnings.isEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  );
-                }
-
-                // Group by varietas
-                final Map<String, List<Map<String, dynamic>>> groups = {};
-                for (final warning in warnings) {
-                  final varietas = warning['varietas'] ?? 'Unknown';
-                  groups.putIfAbsent(varietas, () => []).add(warning);
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: groups.length,
-                  itemBuilder: (context, sectionIndex) {
-                    final varietas = groups.keys.toList()[sectionIndex];
-                    final items = groups[varietas] ?? [];
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Text(
-                            'Varietas: $varietas',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              size: 64,
+                              color: Colors.green,
                             ),
-                          ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Tidak ada peringatan',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Semua sensor dalam kondisi normal',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
                         ),
-                        ...items.map((warning) {
-                          final sensorType = (warning['sensor'] ?? '')
-                              .toString()
-                              .toUpperCase();
-                          final message = warning['message'] ?? '';
-                          final level = warning['level'] ?? 'warning';
-                          final timeStr = _formatTimestamp(
-                            warning['timestamp'],
-                          );
+                      );
+                    }
 
-                          final statusColor = level == 'critical'
-                              ? Colors.red
-                              : Colors.orange;
+                    // List notifications
+                    return Column(
+                      children: warnings.map((warning) {
+                        final notifId = warning['id'] ?? '';
+                        final isRead = _readNotifications.contains(notifId);
+                        final sensorType = (warning['sensor'] ?? '')
+                            .toString()
+                            .toUpperCase();
+                        final message = warning['message'] ?? '';
+                        final level = warning['level'] ?? 'warning';
+                        final timeStr = _formatTimestamp(warning['timestamp']);
+                        final date = warning['date'] ?? '';
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8.0),
-                            child: _buildSimpleNotifCard(
-                              title: sensorType,
-                              message: message,
-                              timeStr: timeStr,
-                              statusColor: statusColor,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        WarningDetailScreen(warning: warning),
-                                  ),
-                                );
-                              },
-                            ),
+                        final statusColor = level == 'critical'
+                            ? Colors.red
+                            : Colors.orange;
+
+                        // Format tanggal untuk ditampilkan
+                        String dateLabel = '';
+                        try {
+                          final dt = DateTime.parse(date);
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          final yesterday = today.subtract(
+                            const Duration(days: 1),
                           );
-                        }),
-                        const SizedBox(height: 12),
-                      ],
+                          final itemDate = DateTime(dt.year, dt.month, dt.day);
+
+                          if (itemDate == today) {
+                            dateLabel = 'Hari Ini, $timeStr';
+                          } else if (itemDate == yesterday) {
+                            dateLabel = 'Kemarin, $timeStr';
+                          } else {
+                            dateLabel =
+                                '${DateFormat('d MMM', 'id_ID').format(dt)}, $timeStr';
+                          }
+                        } catch (_) {
+                          dateLabel = timeStr;
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: _buildSimpleNotifCard(
+                            title: sensorType,
+                            message: message,
+                            timeStr: dateLabel,
+                            statusColor: statusColor,
+                            isRead: isRead,
+                            onTap: () {
+                              if (!isRead) {
+                                _markAsRead(notifId);
+                              }
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      WarningDetailScreen(warning: warning),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      }).toList(),
                     );
                   },
-                );
-              },
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
-          ),
-        ],
-      ),
-    );
+          );
   }
 
   String _formatTimestamp(dynamic timestamp) {
