@@ -6,6 +6,7 @@ import 'history_screen.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'profile_screen.dart';
+import 'notifikasi_screen.dart';
 import '../widgets/tour_overlay.dart';
 
 /// Screen utama dengan bottom navigation yang statis
@@ -45,6 +46,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const HomeScreen(),
     const SettingsScreen(),
     const ProfileScreen(),
+    const NotifikasiScreen(),
   ];
 
   @override
@@ -113,7 +115,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   color: Colors.white,
                 ),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/notifikasi');
+                  setState(() {
+                    _currentIndex = 5; // Index NotifikasiScreen
+                  });
                 },
               ),
             ],
