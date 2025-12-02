@@ -175,19 +175,26 @@ class _KontrolScreenState extends State<KontrolScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Mode Otomatis',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Pompa mengikuti kelembapan tanah',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
+              const Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mode Otomatis',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Pompa mengikuti kelembapan tanah',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
               StreamBuilder<dynamic>(
                 stream: db
@@ -214,13 +221,19 @@ class _KontrolScreenState extends State<KontrolScreen> {
               border: Border.all(color: Colors.blue.shade200),
             ),
             child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.info, color: Colors.blue, size: 20),
                 SizedBox(width: 8),
-                Expanded(
+                Flexible(
                   child: Text(
                     'Mode Otomatis: Pompa otomatis ON jika tanah kering dan OFF jika tanah basah sesuai ambang batas.',
-                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue,
+                      height: 1.3,
+                    ),
+                    maxLines: 3,
                   ),
                 ),
               ],
@@ -235,13 +248,19 @@ class _KontrolScreenState extends State<KontrolScreen> {
               border: Border.all(color: Colors.orange.shade200),
             ),
             child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.info, color: Colors.orange, size: 20),
                 SizedBox(width: 8),
-                Expanded(
+                Flexible(
                   child: Text(
                     'Mode Manual: Anda bisa mengontrol pompa ON/OFF secara manual.',
-                    style: TextStyle(fontSize: 12, color: Colors.orange),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.orange,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
                   ),
                 ),
               ],
@@ -341,41 +360,69 @@ class _KontrolScreenState extends State<KontrolScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton.icon(
+                              child: ElevatedButton(
                                 onPressed: () {
                                   _togglePompa(true);
                                 },
-                                icon: const Icon(Icons.power),
-                                label: const Text('Nyalakan Pompa'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 12,
+                                    horizontal: 8,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.power, size: 20),
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'Nyalakan\nPompa',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: ElevatedButton.icon(
+                              child: ElevatedButton(
                                 onPressed: () {
                                   _togglePompa(false);
                                 },
-                                icon: const Icon(Icons.power_off),
-                                label: const Text('Matikan Pompa'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 12,
+                                    horizontal: 8,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.power_off, size: 20),
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'Matikan\nPompa',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -390,6 +437,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                             border: Border.all(color: Colors.yellow.shade200),
                           ),
                           child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.warning_amber,
@@ -397,13 +445,14 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                 size: 20,
                               ),
                               SizedBox(width: 8),
-                              Expanded(
+                              Flexible(
                                 child: Text(
                                   'Mode Manual: Gunakan dengan hati-hati untuk menghindari kerusakan pada tanaman.',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Colors.orange,
                                   ),
+                                  overflow: TextOverflow.visible,
                                 ),
                               ),
                             ],
@@ -420,16 +469,18 @@ class _KontrolScreenState extends State<KontrolScreen> {
                         border: Border.all(color: Colors.blue.shade200),
                       ),
                       child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(Icons.auto_mode, color: Colors.blue, size: 20),
                           SizedBox(width: 8),
-                          Expanded(
+                          Flexible(
                             child: Text(
                               'Mode Otomatis aktif. Pompa dikontrol secara otomatis berdasarkan kelembapan tanah.',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.blue,
                               ),
+                              overflow: TextOverflow.visible,
                             ),
                           ),
                         ],
@@ -475,19 +526,31 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const Text(
             'Pengaturan ambang batas kelembapan tanah, suhu, dan cahaya dapat diatur dari halaman Profile sesuai dengan varietas yang dipilih.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
+            maxLines: 3,
+            overflow: TextOverflow.visible,
           ),
           const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pushNamed(context, '/profile');
-            },
-            icon: const Icon(Icons.settings),
-            label: const Text('Pergi ke Pengaturan'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/profile');
+              },
+              icon: const Icon(Icons.settings, size: 18),
+              label: const Text(
+                'Pergi ke Pengaturan',
+                style: TextStyle(fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),

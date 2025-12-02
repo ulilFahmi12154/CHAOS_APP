@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import 'main_navigation_screen.dart';
 import '../widgets/custom_input.dart';
@@ -101,11 +102,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await auth.register(emailCtrl.text.trim(), passCtrl.text.trim());
       // clear any previous register error on success
       setState(() => _registerError = null);
+
+      // Set tour status untuk akun baru
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        await FirebaseFirestore.instance.collection('users').doc(userId).set({
+          'tourCompleted': false,
+        }, SetOptions(merge: true));
+      }
+
       if (mounted) {
+        // Untuk akun baru, showTour = true
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const MainNavigationScreen(initialIndex: 2),
+            builder: (_) =>
+                const MainNavigationScreen(initialIndex: 2, showTour: true),
           ),
         );
       }

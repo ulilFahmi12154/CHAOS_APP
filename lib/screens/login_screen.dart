@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import 'main_navigation_screen.dart';
 import 'register_screen.dart';
@@ -26,10 +28,27 @@ class _LoginScreenState extends State<LoginScreen> {
       // clear any previous login error on success
       setState(() => _loginError = null);
       if (mounted) {
+        // Check if user has seen the app tour from Firestore
+        final userId = FirebaseAuth.instance.currentUser?.uid;
+        bool showTour = false;
+
+        if (userId != null) {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+
+          // Tour muncul jika field 'tourCompleted' belum ada atau bernilai false
+          final tourCompleted = userDoc.data()?['tourCompleted'] ?? false;
+          showTour = !tourCompleted;
+        }
+
+        // Always go to MainNavigationScreen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const MainNavigationScreen(initialIndex: 2),
+            builder: (_) =>
+                MainNavigationScreen(initialIndex: 2, showTour: showTour),
           ),
         );
       }
