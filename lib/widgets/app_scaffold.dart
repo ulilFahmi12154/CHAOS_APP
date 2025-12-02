@@ -70,43 +70,40 @@ class _AppScaffoldState extends State<AppScaffold> {
           ],
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  context,
-                  icon: Icons.toggle_on_outlined,
-                  label: 'Kontrol',
-                  index: 0,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.history,
-                  label: 'Histori',
-                  index: 1,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.dashboard_outlined,
-                  label: 'Dashboard',
-                  index: 2,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.settings_outlined,
-                  label: 'Pengaturan',
-                  index: 3,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.person_outline,
-                  label: 'Profile',
-                  index: 4,
-                ),
-              ],
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildNavItem(
+                context,
+                icon: Icons.toggle_on_outlined,
+                label: 'Panel',
+                index: 0,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.history,
+                label: 'Log',
+                index: 1,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.dashboard_outlined,
+                label: 'Home',
+                index: 2,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.settings_outlined,
+                label: 'Set',
+                index: 3,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.person_outline,
+                label: 'Akun',
+                index: 4,
+              ),
+            ],
           ),
         ),
       ),
@@ -120,33 +117,36 @@ class _AppScaffoldState extends State<AppScaffold> {
     required int index,
   }) {
     final isActive = widget.currentIndex == index;
-    return InkWell(
-      onTap: () => _navigateTo(context, index),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isActive ? Colors.white : Colors.white70,
-              size: 24,
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _navigateTo(context, index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  color: isActive ? Colors.white : Colors.white70,
+                  size: 22,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isActive ? Colors.white : Colors.white70,
+                    fontSize: 9,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.white70,
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
