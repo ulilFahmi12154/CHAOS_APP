@@ -17,10 +17,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String? _activeVarietas;
   final TransformationController _zoomController = TransformationController();
   StreamSubscription<DatabaseEvent>? _historySubscription;
+  StreamSubscription<DatabaseEvent>? _activeVarietasSubscription;
 
   // Tab selections
   int _selectedDataType =
-      0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara
+      0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara, 4: pH Tanah
   int _selectedTimeFilter = 0; // 0: Hari Ini, 1: Bulan Ini, 2: Tahun Ini
 
   List<Map<String, dynamic>> _historyData = [];
@@ -29,6 +30,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   double _average = 0.0;
   double _max = 0.0;
   double _min = 0.0;
+
+  // Dynamic chart axis config (updated by _getChartData)
+  double _minX = 0;
+  double _maxX = 24;
+  double _bottomInterval = 4;
 
   @override
   void initState() {
@@ -39,6 +45,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void dispose() {
     _historySubscription?.cancel();
+    _activeVarietasSubscription?.cancel();
     _zoomController.dispose();
     super.dispose();
   }
@@ -46,52 +53,91 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _loadActiveVarietasAndHistory() async {
     setState(() => _isLoading = true);
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // Fetch user's active varietas
-      final userSnap = await _dbRef.child('users').child(uid).get();
-      String? varietasKey;
-      if (userSnap.exists && userSnap.value is Map) {
-        final map = userSnap.value as Map;
-        varietasKey =
-            (map['active_varietas'] ??
-                    map['active_varieta'] ??
-                    map['active_varietes'])
-                as String?;
-      }
+      // Tentukan varietas pilihan user
+      final varietasKey = await _getActiveVarietas();
       _activeVarietas = varietasKey;
 
-      // Initial load + start realtime listener
-      final ref = await _resolveHistoryRef(varietasKey);
+      // Baca dari root smartfarm/history (semua data), tapi filter di UI
+      final ref = await _resolveHistoryRef(null);
       await _loadHistoryDataFromRef(ref);
       _subscribeHistory(ref);
+
+      // Dengarkan perubahan pilihan varietas user
+      _activeVarietasSubscription?.cancel();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        _activeVarietasSubscription = _dbRef
+            .child('users')
+            .child(uid)
+            .onValue
+            .listen((event) {
+              if (event.snapshot.value is Map) {
+                final map = event.snapshot.value as Map;
+                final v =
+                    (map['active_varietas'] ??
+                            (map['settings'] is Map
+                                ? map['settings']['varietas']
+                                : null))
+                        ?.toString();
+                if (v != null && v.isNotEmpty && v != _activeVarietas) {
+                  setState(() => _activeVarietas = v);
+                  _calculateStats();
+                }
+              }
+            });
+      }
     } catch (e) {
       print('Error loading active varietas/history: $e');
     }
     setState(() => _isLoading = false);
   }
 
+  // Ambil varietas pilihan user dari users/<uid>/active_varietas atau smartfarm/active_varietas
+  Future<String?> _getActiveVarietas() async {
+    String? varietasKey;
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final userSnap = await _dbRef.child('users').child(uid).get();
+        if (userSnap.exists && userSnap.value is Map) {
+          final map = userSnap.value as Map;
+          varietasKey =
+              (map['active_varietas'] ??
+                      (map['settings'] is Map
+                          ? map['settings']['varietas']
+                          : null))
+                  ?.toString();
+        }
+      }
+
+      // Fallback ke smartfarm/active_varietas
+      if (varietasKey == null || varietasKey.isEmpty) {
+        final global = await _dbRef
+            .child('smartfarm')
+            .child('active_varietas')
+            .get();
+        if (global.exists && global.value != null) {
+          varietasKey = global.value.toString();
+        }
+      }
+
+      // Fallback terakhir: varietas pertama di history
+      if (varietasKey == null || varietasKey.isEmpty) {
+        final histRoot = await _dbRef.child('smartfarm').child('history').get();
+        if (histRoot.exists) {
+          for (final child in histRoot.children) {
+            varietasKey = child.key;
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+    return varietasKey;
+  }
+
   Future<DatabaseReference> _resolveHistoryRef(String? varietasKey) async {
-    // Try modern path first then fallbacks
-    if (varietasKey != null && varietasKey.isNotEmpty) {
-      final primary = _dbRef
-          .child('smartfarm')
-          .child('history')
-          .child(varietasKey);
-      if ((await primary.get()).exists) return primary;
-      final alt = _dbRef.child(varietasKey);
-      if ((await alt.get()).exists) return alt;
-    }
-    final legacyPrimary = _dbRef
-        .child('smartfarm')
-        .child('history')
-        .child('dewata_f1');
-    if ((await legacyPrimary.get()).exists) return legacyPrimary;
-    return _dbRef.child('dewata_f1'); // last resort
+    // Selalu gunakan root history agar menggabungkan semua varietas
+    return _dbRef.child('smartfarm').child('history');
   }
 
   Future<void> _loadHistoryDataFromRef(DatabaseReference ref) async {
@@ -120,7 +166,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       });
       return;
     }
-    Map<dynamic, dynamic> data = rawValue as Map<dynamic, dynamic>;
+    Map<dynamic, dynamic> data = rawValue;
     List<Map<String, dynamic>> tempData = [];
 
     int toMillis(dynamic ts) {
@@ -152,33 +198,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return 0.0;
     }
 
-    data.forEach((dateKey, dateValue) {
-      if (dateValue is Map) {
-        dateValue.forEach((timeKey, timeValue) {
-          if (timeValue is Map) {
-            DateTime? dateFromKey;
-            try {
-              dateFromKey = DateFormat('yyyy-MM-dd').parse(dateKey);
-            } catch (_) {}
+    // Flatten: smartfarm/history/<varietas>/<yyyy-MM-dd>/<pushId>
+    data.forEach((varietasKey, varietasData) {
+      if (varietasData is Map) {
+        varietasData.forEach((dateKey, dateValue) {
+          if (dateValue is Map) {
+            dateValue.forEach((timeKey, timeValue) {
+              if (timeValue is Map) {
+                DateTime? dateFromKey;
+                try {
+                  dateFromKey = DateFormat('yyyy-MM-dd').parse(dateKey);
+                } catch (_) {}
 
-            final parsedTs = toMillis(timeValue['timestamp']);
-            final effectiveTs =
-                parsedTs < DateTime(2005).millisecondsSinceEpoch &&
-                    dateFromKey != null
-                ? dateFromKey.millisecondsSinceEpoch
-                : parsedTs;
+                final parsedTs = toMillis(timeValue['timestamp']);
+                final effectiveTs =
+                    parsedTs < DateTime(2005).millisecondsSinceEpoch &&
+                        dateFromKey != null
+                    ? dateFromKey.millisecondsSinceEpoch
+                    : parsedTs;
 
-            tempData.add({
-              'date': dateKey,
-              'timeKey': timeKey,
-              'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
-              'suhu': toDouble(timeValue['suhu']),
-              'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
-              'kelembapan_udara': toDouble(
-                timeValue['kelembapan_udara'] ?? timeValue['kelembaban_udara'],
-              ),
-              'timestamp': effectiveTs,
-              'effectiveDate': dateFromKey?.millisecondsSinceEpoch,
+                tempData.add({
+                  'varietas': varietasKey.toString(),
+                  'date': dateKey,
+                  'timeKey': timeKey,
+                  'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
+                  'suhu': toDouble(timeValue['suhu']),
+                  'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
+                  'kelembapan_udara': toDouble(
+                    timeValue['kelembapan_udara'] ??
+                        timeValue['kelembaban_udara'],
+                  ),
+                  'ph_tanah': toDouble(timeValue['ph_tanah']),
+                  'timestamp': effectiveTs,
+                  'effectiveDate': dateFromKey?.millisecondsSinceEpoch,
+                });
+              }
             });
           }
         });
@@ -196,37 +250,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   List<Map<String, dynamic>> _getFilteredData() {
     final now = DateTime.now();
-    if (_selectedTimeFilter == 0) {
-      // Hari Ini: data dengan tanggal sama; jika kosong gunakan 24 jam terakhir sebagai fallback
-      List<Map<String, dynamic>> today = _historyData.where((item) {
-        final ts = item['timestamp'] as int;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        return dt.year == now.year &&
-            dt.month == now.month &&
-            dt.day == now.day;
-      }).toList();
 
-      if (today.isEmpty) {
-        final cutoff = now
-            .subtract(const Duration(days: 1))
-            .millisecondsSinceEpoch;
-        today = _historyData.where((item) {
-          final ts = item['timestamp'] as int;
-          return ts >= cutoff;
-        }).toList();
-      }
-      return today;
+    // Filter berdasarkan varietas pilihan user TERLEBIH DAHULU
+    List<Map<String, dynamic>> base = _historyData;
+    if (_activeVarietas != null && _activeVarietas!.isNotEmpty) {
+      base = base
+          .where((item) => item['varietas']?.toString() == _activeVarietas)
+          .toList();
+    }
+
+    // Lalu filter berdasarkan waktu
+    if (_selectedTimeFilter == 0) {
+      // Hari Ini: 24 jam terakhir (lebih praktis untuk melihat data terbaru)
+      final cutoff = now
+          .subtract(const Duration(hours: 24))
+          .millisecondsSinceEpoch;
+      return base.where((item) {
+        final ts = item['timestamp'] as int;
+        return ts >= cutoff;
+      }).toList();
     }
 
     if (_selectedTimeFilter == 1) {
-      return _historyData.where((item) {
+      return base.where((item) {
         final ts = item['timestamp'] as int;
         final dt = DateTime.fromMillisecondsSinceEpoch(ts);
         return dt.year == now.year && dt.month == now.month;
       }).toList();
     }
     if (_selectedTimeFilter == 2) {
-      return _historyData.where((item) {
+      return base.where((item) {
         final ts = item['timestamp'] as int;
         final dt = DateTime.fromMillisecondsSinceEpoch(ts);
         return dt.year == now.year;
@@ -278,6 +331,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       case 3:
         dataKey = 'kelembapan_udara';
         break;
+      case 4:
+        dataKey = 'ph_tanah';
+        break;
       default:
         dataKey = 'kelembaban_tanah';
     }
@@ -315,37 +371,101 @@ class _HistoryScreenState extends State<HistoryScreen> {
       case 3:
         dataKey = 'kelembapan_udara';
         break;
+      case 4:
+        dataKey = 'ph_tanah';
+        break;
       default:
         dataKey = 'kelembaban_tanah';
     }
 
-    // Group data by hour for better visualization
-    Map<int, List<double>> groupedByHour = {};
+    // Grouping disesuaikan dengan filter waktu:
+    // - Hari ini -> 1 data per jam (grouping per jam)
+    // - Bulan ini -> 1 data per hari (grouping per hari)
+    // - Tahun ini -> tampilkan semua data
+    Map<int, List<double>> buckets = {};
 
-    for (var item in filteredData) {
-      int timestamp = item['timestamp'] as int;
-      DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      int hour = dateTime.hour;
+    // Untuk "Hari Ini", grouping per jam (1 data per jam)
+    if (_selectedTimeFilter == 0) {
+      // Group by hour
+      for (var item in filteredData) {
+        int ts = item['timestamp'] as int;
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        int hourKey = dt.hour; // 0..23
 
-      var value = item[dataKey];
-      double doubleValue = (value is int)
-          ? value.toDouble()
-          : (value as double);
+        final v = item[dataKey];
+        final doubleValue = (v is int) ? v.toDouble() : (v as double);
 
-      if (!groupedByHour.containsKey(hour)) {
-        groupedByHour[hour] = [];
+        buckets.putIfAbsent(hourKey, () => []);
+        buckets[hourKey]!.add(doubleValue);
       }
-      groupedByHour[hour]!.add(doubleValue);
+
+      // Rata-rata tiap jam -> FlSpot
+      final spots = buckets.entries.map((e) {
+        final avg = e.value.reduce((a, b) => a + b) / e.value.length;
+        return FlSpot(e.key.toDouble(), avg);
+      }).toList()..sort((a, b) => a.x.compareTo(b.x));
+
+      // Update axis untuk hari ini
+      _minX = 0;
+      _maxX = 23;
+      _bottomInterval = 4; // Tampilkan: 0, 4, 8, 12, 16, 20
+
+      return spots;
     }
 
-    // Calculate average for each hour
-    List<FlSpot> spots = [];
-    groupedByHour.forEach((hour, values) {
-      double avg = values.reduce((a, b) => a + b) / values.length;
-      spots.add(FlSpot(hour.toDouble(), avg));
-    });
+    // Untuk "Bulan Ini", grouping per hari (1 data per hari)
+    if (_selectedTimeFilter == 1) {
+      // Group by day
+      for (var item in filteredData) {
+        int ts = item['timestamp'] as int;
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        int dayKey = dt.day; // 1..31
 
-    spots.sort((a, b) => a.x.compareTo(b.x));
+        final v = item[dataKey];
+        final doubleValue = (v is int) ? v.toDouble() : (v as double);
+
+        buckets.putIfAbsent(dayKey, () => []);
+        buckets[dayKey]!.add(doubleValue);
+      }
+
+      // Rata-rata tiap hari -> FlSpot
+      final spots = buckets.entries.map((e) {
+        final avg = e.value.reduce((a, b) => a + b) / e.value.length;
+        return FlSpot(e.key.toDouble(), avg);
+      }).toList()..sort((a, b) => a.x.compareTo(b.x));
+
+      // Update axis untuk bulan ini
+      _minX = 1;
+      _maxX = 30;
+      _bottomInterval = 6; // Tampilkan: 1, 6, 12, 18, 24, 30
+
+      return spots;
+    }
+
+    // Untuk "Tahun Ini", grouping per bulan (1 data per bulan)
+    // Group by month
+    for (var item in filteredData) {
+      int ts = item['timestamp'] as int;
+      final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+      int monthKey = dt.month; // 1..12
+
+      final v = item[dataKey];
+      final doubleValue = (v is int) ? v.toDouble() : (v as double);
+
+      buckets.putIfAbsent(monthKey, () => []);
+      buckets[monthKey]!.add(doubleValue);
+    }
+
+    // Rata-rata tiap bulan -> FlSpot
+    final spots = buckets.entries.map((e) {
+      final avg = e.value.reduce((a, b) => a + b) / e.value.length;
+      return FlSpot(e.key.toDouble(), avg);
+    }).toList()..sort((a, b) => a.x.compareTo(b.x));
+
+    // Update axis untuk Tahun Ini
+    _minX = 1;
+    _maxX = 12;
+    _bottomInterval = 1; // Tampilkan semua bulan: 1-12
 
     return spots;
   }
@@ -376,21 +496,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 const SizedBox(height: 16),
 
-                // Data Type Grid (2 x 2)
+                // Data Type Grid (2 x 3 untuk 5 item)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: GridView.count(
                     crossAxisCount: 2,
                     mainAxisSpacing: 8,
                     crossAxisSpacing: 8,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 2.8,
+                    childAspectRatio: 2.5,
                     children: [
                       _buildDataTypeTab('Kelembapan\nTanah', 0),
                       _buildDataTypeTab('Suhu\nUdara', 1),
                       _buildDataTypeTab('Intensitas\nCahaya', 2),
                       _buildDataTypeTab('Kelembapan\nUdara', 3),
+                      _buildDataTypeTab('pH\nTanah', 4),
                     ],
                   ),
                 ),
@@ -428,7 +549,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           borderRadius: BorderRadius.circular(20),
                           clipBehavior: Clip.hardEdge,
                           child: SizedBox(
-                            height: 250,
+                            height: 400,
                             child: InteractiveViewer(
                               transformationController: _zoomController,
                               minScale: 1.0,
@@ -536,39 +657,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildTimeFilterTab(String text, int index) {
-    bool isSelected = _selectedTimeFilter == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedTimeFilter = index;
-          _calculateStats();
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2D5F40) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF2D5F40) : Colors.grey.shade300,
-          ),
-        ),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Removed _buildDataTypeChips (replaced by 2x2 GridView)
-
   Widget _buildTimeFilterChips() {
     final labels = const ['Hari Ini', 'Bulan Ini', 'Tahun Ini'];
     return Wrap(
@@ -623,6 +711,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       leftInterval = 1000;
     } else if (_selectedDataType == 3) {
       leftInterval = 10;
+    } else if (_selectedDataType == 4) {
+      leftInterval = 4; // pH: 0,4,8,12
     } else {
       leftInterval = 10;
     }
@@ -660,12 +750,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
-              interval: 4,
+              interval: _bottomInterval,
               getTitlesWidget: (value, meta) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Text(
-                    '${value.toInt()}:00',
+                    _bottomTitle(value),
                     style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 );
@@ -680,8 +770,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         borderData: FlBorderData(show: false),
-        minX: 0,
-        maxX: 24,
+        minX: _minX,
+        maxX: _maxX,
         minY: minY,
         maxY: _getMaxYValue(),
         lineBarsData: [
@@ -738,6 +828,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return 'Intensitas Cahaya';
       case 3:
         return 'Kelembapan Udara';
+      case 4:
+        return 'pH Tanah';
       default:
         return 'Nilai';
     }
@@ -759,6 +851,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return 100;
     }
 
+    // For pH Tanah, 0..20
+    if (_selectedDataType == 4) {
+      return 20;
+    }
+
     // Default fixed ranges for other data types
     switch (_selectedDataType) {
       case 1:
@@ -778,8 +875,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
       case 0:
       case 3:
         return '%';
+      case 4:
+        return ' pH'; // pH Tanah
       default:
         return '';
+    }
+  }
+
+  String _bottomTitle(double x) {
+    final xi = x.round();
+    switch (_selectedTimeFilter) {
+      case 0:
+        return '$xi:00';
+      case 1:
+        return xi.toString();
+      case 2:
+        const months = [
+          '',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'Mei',
+          'Jun',
+          'Jul',
+          'Agu',
+          'Sep',
+          'Okt',
+          'Nov',
+          'Des',
+        ];
+        if (xi >= 1 && xi <= 12) return months[xi];
+        return xi.toString();
+      default:
+        return xi.toString();
     }
   }
 }
