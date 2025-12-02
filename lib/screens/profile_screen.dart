@@ -11,7 +11,8 @@ class CriteriaRow extends StatelessWidget {
   final bool ok;
   final String text;
 
-  const CriteriaRow({Key? key, required this.ok, required this.text}) : super(key: key);
+  const CriteriaRow({Key? key, required this.ok, required this.text})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +74,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!digit) {
         issues.add('• Harus mengandung angka (0-9)');
       }
-      final symbol = RegExp(r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]').hasMatch(password);
+      final symbol = RegExp(
+        r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]',
+      ).hasMatch(password);
       if (!symbol) {
         issues.add('• Harus mengandung simbol (mis. !@#\$%^&*)');
       }
@@ -118,9 +121,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       labelText: 'Kata sandi baru',
                       suffixIcon: IconButton(
                         icon: Icon(
-                          newPassVisible ? Icons.visibility : Icons.visibility_off,
+                          newPassVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                         ),
-                        onPressed: () => setStateDialog(() => newPassVisible = !newPassVisible),
+                        onPressed: () => setStateDialog(
+                          () => newPassVisible = !newPassVisible,
+                        ),
                       ),
                     ),
                     onChanged: (v) {
@@ -131,7 +138,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         final low = RegExp(r'[a-z]').hasMatch(v);
                         hasUpperLower = up && low;
                         hasDigit = RegExp(r'\d').hasMatch(v);
-                        hasSymbol = RegExp(r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]').hasMatch(v);
+                        hasSymbol = RegExp(
+                          r'[!@#\$%\^&*(),.?":{}|<>_\-\[\]\\/;]',
+                        ).hasMatch(v);
                       });
                     },
                   ),
@@ -139,9 +148,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (showCriteria || newPassController.text.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   CriteriaRow(ok: hasMinLen, text: 'Minimal 8 karakter'),
-                  CriteriaRow(ok: hasUpperLower, text: 'Harus mengandung huruf besar dan huruf kecil'),
-                  CriteriaRow(ok: hasDigit, text: 'Harus mengandung angka (0-9)'),
-                  CriteriaRow(ok: hasSymbol, text: 'Harus mengandung simbol (mis. !@#\$%^&*)'),
+                  CriteriaRow(
+                    ok: hasUpperLower,
+                    text: 'Harus mengandung huruf besar dan huruf kecil',
+                  ),
+                  CriteriaRow(
+                    ok: hasDigit,
+                    text: 'Harus mengandung angka (0-9)',
+                  ),
+                  CriteriaRow(
+                    ok: hasSymbol,
+                    text: 'Harus mengandung simbol (mis. !@#\$%^&*)',
+                  ),
                 ],
                 TextField(
                   controller: confirmPassController,
@@ -189,7 +207,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                   final issues = _passwordIssues(newPass);
                   if (issues.isNotEmpty) {
-                    setStateDialog(() => errorMsg = 'Password tidak valid:\n${issues.join('\n')}');
+                    setStateDialog(
+                      () => errorMsg =
+                          'Password tidak valid:\n${issues.join('\n')}',
+                    );
                     return;
                   }
                   if (newPass != confirmPass) {
@@ -398,7 +419,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.only(top: 8.0),
                         child: Text(
                           localError!,
-                          style: const TextStyle(color: Colors.red, fontSize: 13),
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                   ],
@@ -412,7 +436,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onPressed: () {
                       final text = controller.text.trim();
                       if (text.isEmpty) {
-                        setStateDialog(() => localError = 'Nama tidak boleh kosong');
+                        setStateDialog(
+                          () => localError = 'Nama tidak boleh kosong',
+                        );
                         return;
                       }
                       Navigator.pop(context, text);
@@ -794,22 +820,43 @@ class _ProfileInfoCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: cardColor,
-      child: ListTile(
-        leading: Icon(icon, color: const Color(0xFF0B6623), size: 32),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0B6623),
-          ),
-        ),
-        subtitle: Text(value, style: const TextStyle(color: Colors.black87)),
-        trailing: showEdit
-            ? IconButton(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF0B6623), size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0B6623),
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: const TextStyle(color: Colors.black87, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (showEdit)
+              IconButton(
                 icon: const Icon(Icons.edit, color: Color(0xFF0B6623)),
                 onPressed: onEdit,
-              )
-            : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+          ],
+        ),
       ),
     );
   }

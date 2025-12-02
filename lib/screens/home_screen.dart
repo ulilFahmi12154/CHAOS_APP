@@ -254,17 +254,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _togglePompa(bool state) async {
-    final varietasToUse = activeVarietas ?? 'default';
-    final db = FirebaseDatabase.instance.ref();
-    await db
-        .child('smartfarm/commands/relay_$varietasToUse')
-        .set(state ? 1 : 0);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Pompa ${state ? 'Dinyalakan' : 'Dimatikan'}')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;

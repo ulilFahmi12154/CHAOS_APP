@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../screens/kontrol_screen.dart';
-import '../screens/history_screen.dart';
-import '../screens/home_screen.dart';
-import '../screens/settings_screen.dart';
-import '../screens/profile_screen.dart';
 
 /// Template scaffold dengan app bar dan bottom navigation
 /// yang bisa digunakan di semua halaman utama
@@ -23,64 +18,9 @@ class AppScaffold extends StatefulWidget {
 }
 
 class _AppScaffoldState extends State<AppScaffold> {
-  int _lastOpenedMillis = 0;
-
   @override
   void initState() {
     super.initState();
-    _loadLastOpened();
-  }
-
-  Future<void> _loadLastOpened() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _lastOpenedMillis = prefs.getInt('notifications_last_opened') ?? 0;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _markNotificationsOpenedInPreferences() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-        'notifications_last_opened',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-      setState(() {
-        _lastOpenedMillis = DateTime.now().millisecondsSinceEpoch;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _markOpenedNow() async {
-    try {
-      // Mark last opened time in SharedPreferences only
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt('notifications_last_opened', now);
-      setState(() {
-        _lastOpenedMillis = now;
-      });
-    } catch (_) {}
-  }
-
-  Widget _getScreen(int index) {
-    // Return fresh widget instance sesuai index
-    switch (index) {
-      case 0:
-        return const KontrolScreen();
-      case 1:
-        return const HistoryScreen();
-      case 2:
-        return const HomeScreen();
-      case 3:
-        return const SettingsScreen();
-      case 4:
-        return const ProfileScreen();
-      default:
-        return const HomeScreen();
-    }
   }
 
   @override
@@ -130,43 +70,40 @@ class _AppScaffoldState extends State<AppScaffold> {
           ],
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  context,
-                  icon: Icons.toggle_on_outlined,
-                  label: 'Kontrol',
-                  index: 0,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.history,
-                  label: 'Histori',
-                  index: 1,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.dashboard_outlined,
-                  label: 'Dashboard',
-                  index: 2,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.settings_outlined,
-                  label: 'Pengaturan',
-                  index: 3,
-                ),
-                _buildNavItem(
-                  context,
-                  icon: Icons.person_outline,
-                  label: 'Profile',
-                  index: 4,
-                ),
-              ],
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildNavItem(
+                context,
+                icon: Icons.toggle_on_outlined,
+                label: 'Panel',
+                index: 0,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.history,
+                label: 'Log',
+                index: 1,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.dashboard_outlined,
+                label: 'Home',
+                index: 2,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.settings_outlined,
+                label: 'Set',
+                index: 3,
+              ),
+              _buildNavItem(
+                context,
+                icon: Icons.person_outline,
+                label: 'Akun',
+                index: 4,
+              ),
+            ],
           ),
         ),
       ),
@@ -180,33 +117,36 @@ class _AppScaffoldState extends State<AppScaffold> {
     required int index,
   }) {
     final isActive = widget.currentIndex == index;
-    return InkWell(
-      onTap: () => _navigateTo(context, index),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isActive ? Colors.white : Colors.white70,
-              size: 24,
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _navigateTo(context, index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  color: isActive ? Colors.white : Colors.white70,
+                  size: 22,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isActive ? Colors.white : Colors.white70,
+                    fontSize: 9,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.white70,
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -230,5 +170,15 @@ class _AppScaffoldState extends State<AppScaffold> {
 
     final routeName = routeForIndex[index] ?? '/home';
     Navigator.of(context).pushReplacementNamed(routeName);
+  }
+
+  Future<void> _markOpenedNow() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'notifications_last_opened',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {}
   }
 }
