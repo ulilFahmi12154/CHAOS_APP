@@ -1313,9 +1313,9 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
-              // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi
+              // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi nutrisi interaktif
               if (title.toLowerCase().contains('pupuk')) {
-                Navigator.pushNamed(context, '/rekomendasi-pupuk');
+                Navigator.pushNamed(context, '/nutrient-recommendation');
               } else if (title.toLowerCase().contains('tanaman')) {
                 Navigator.push(
                   context,
