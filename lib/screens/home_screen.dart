@@ -630,16 +630,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               if (!belumPilih) ...[
                 const SizedBox(width: 8),
-                ElevatedButton.icon(
+                ElevatedButton(
                   onPressed: () {
                     _showDeleteConfirmation(context);
                   },
-                  icon: const Icon(Icons.delete, size: 16),
-                  label: const Text('Hapus'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red.shade400,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 12,
+                    ),
                     textStyle: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -648,6 +649,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.delete, size: 16),
+                      const SizedBox(
+                        width: 4,
+                      ), // Ubah nilai ini untuk mengatur jarak
+                      const Text('Hapus'),
+                    ],
                   ),
                 ),
               ],
