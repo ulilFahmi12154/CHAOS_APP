@@ -127,9 +127,23 @@ class _NutrientRecommendationScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rekomendasi Nutrisi Tanaman'),
         backgroundColor: Colors.green,
         elevation: 0,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 80,
+        leadingWidth: 120,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Image.asset(
+            'assets/images/logo.png',
+            height: 90,
+            fit: BoxFit.contain,
+            errorBuilder: (c, e, s) =>
+                const Icon(Icons.eco, color: Colors.white),
+          ),
+        ),
+        title: const Text('Rekomendasi Nutrisi Tanaman'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

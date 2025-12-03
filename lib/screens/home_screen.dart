@@ -630,23 +630,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               if (!belumPilih) ...[
                 const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _showDeleteConfirmation(context);
-                  },
-                  icon: const Icon(Icons.delete, size: 16),
-                  label: const Text('Hapus'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade400,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _showDeleteConfirmation(context);
+                    },
+                    icon: const Icon(Icons.delete, size: 16),
+                    label: const Text('Hapus'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade400,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),

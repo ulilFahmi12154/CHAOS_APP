@@ -9,7 +9,6 @@ import 'screens/main_navigation_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/rekomendasi_pupuk_screen.dart';
 import 'screens/nutrient_recommendation_screen.dart';
-import 'screens/notifikasi_screen.dart';
 import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
 
@@ -123,7 +122,8 @@ class _MyAppState extends State<MyApp> {
         '/nutrient-recommendation': (context) =>
             const NutrientRecommendationScreen(),
         '/intro': (context) => const IntroSlidesScreen(),
-        '/notifikasi': (context) => const NotifikasiScreen(),
+        // Route alias: always open notifications within MainNavigationScreen
+        '/notifikasi': (context) => const MainNavigationScreen(initialIndex: 5),
       },
     );
   }

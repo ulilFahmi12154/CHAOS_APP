@@ -30,15 +30,12 @@ class _AppScaffoldState extends State<AppScaffold> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1B5E20),
         elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            if (Navigator.canPop(context)) Navigator.pop(context);
-          },
-        ),
-        title: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 80,
+        leadingWidth: 120,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: Image.asset(
             'assets/images/logo.png',
             height: 90,
@@ -47,12 +44,21 @@ class _AppScaffoldState extends State<AppScaffold> {
                 const Icon(Icons.eco, color: Colors.white),
           ),
         ),
+        title: const SizedBox.shrink(),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Colors.white),
             onPressed: () async {
               await _markOpenedNow();
-              Navigator.pushNamed(context, '/notifikasi');
+              // Route ke main screen dan buka tab Notifikasi (index 5),
+              // sertakan lastIndex untuk seed history agar back kembali ke tab sebelumnya
+              Navigator.of(context).pushReplacementNamed(
+                '/main',
+                arguments: {
+                  'initialIndex': 5,
+                  'lastIndex': widget.currentIndex,
+                },
+              );
             },
           ),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../widgets/notification_badge.dart';
 
 class WarningDetailScreen extends StatelessWidget {
   final Map<String, dynamic> warning;
@@ -23,18 +24,36 @@ class WarningDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFE8F5E9),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF1B5E20),
         elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 80,
+        leadingWidth: 120,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Image.asset(
+            'assets/images/logo.png',
+            height: 90,
+            fit: BoxFit.contain,
+            errorBuilder: (c, e, s) =>
+                const Icon(Icons.eco, color: Colors.white),
+          ),
         ),
-        title: const Text(
-          'Detail Peringatan',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
+        title: const SizedBox.shrink(),
+        actions: [
+          NotificationBadgeStream(
+            child: const Icon(
+              Icons.notifications_outlined,
+              color: Colors.white,
+            ),
+            onTap: () {
+              Navigator.pop(context);
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -59,6 +78,103 @@ class WarningDetailScreen extends StatelessWidget {
 
             // Data Sensor (jika tersedia)
             _buildSensorDataCard(),
+          ],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B5E20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(
+                  context: context,
+                  icon: Icons.toggle_on_outlined,
+                  label: 'Kontrol',
+                  index: 0,
+                ),
+                _buildNavItem(
+                  context: context,
+                  icon: Icons.history,
+                  label: 'Histori',
+                  index: 1,
+                ),
+                _buildNavItem(
+                  context: context,
+                  icon: Icons.dashboard_outlined,
+                  label: 'Dashboard',
+                  index: 2,
+                ),
+                _buildNavItem(
+                  context: context,
+                  icon: Icons.settings_outlined,
+                  label: 'Pengaturan',
+                  index: 3,
+                ),
+                _buildNavItem(
+                  context: context,
+                  icon: Icons.person_outline,
+                  label: 'Profile',
+                  index: 4,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required int index,
+    bool isActive = false,
+  }) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(
+          context,
+        ).pushReplacementNamed('/main', arguments: {'initialIndex': index});
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.white.withOpacity(0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? Colors.white : Colors.white70,
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.white70,
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
           ],
         ),
       ),

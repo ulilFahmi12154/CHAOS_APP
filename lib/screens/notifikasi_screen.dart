@@ -3,6 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:chaos_app/screens/warning_detail_screen.dart';
+import 'package:chaos_app/services/notification_read_cache.dart';
 
 Widget _buildSimpleNotifCard({
   required String title,
@@ -119,6 +120,10 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
   String? _currentUserId;
   String? _userVarietas;
 
+  bool _isReadValue(dynamic v) {
+    return v == true || v == 'true' || v == 1 || v == '1';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -160,47 +165,130 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
     await _loadReadNotifications();
 
     setState(() {
-      _warningStream = _getWarningsFromRealtimeDB();
+      _warningStream = _getWarningsFromRealtimeDB().asBroadcastStream();
     });
   }
 
   Future<void> _loadReadNotifications() async {
-    if (_currentUserId == null) return;
-
-    final db = FirebaseDatabase.instance.ref();
-    final snapshot = await db
-        .child('users')
-        .child(_currentUserId!)
-        .child('read_notifications')
-        .get();
-
-    if (snapshot.exists && snapshot.value is Map) {
-      final readMap = snapshot.value as Map;
-      setState(() {
-        _readNotifications.clear();
-        readMap.forEach((key, value) {
-          if (value == true) {
-            _readNotifications.add(key.toString());
-          }
-        });
-      });
-    }
+    // Status isRead sekarang disimpan langsung di warning data
+    // Tidak perlu load dari user's read_notifications lagi
+    // Status akan di-load langsung dari stream
+    setState(() {
+      _readNotifications.clear();
+    });
   }
 
   Future<void> _markAsRead(String notificationId) async {
-    if (_currentUserId == null) return;
+    if (_currentUserId == null || _userVarietas == null) return;
 
-    final db = FirebaseDatabase.instance.ref();
-    await db
-        .child('users')
-        .child(_currentUserId!)
-        .child('read_notifications')
-        .child(notificationId)
-        .set(true);
+    // Parse notification ID: format {date}-{sensorType}-{pushKey}
+    try {
+      final parts = notificationId.split('-');
+      if (parts.length >= 3) {
+        final date = parts[0];
+        final sensorType = parts[1];
+        final pushKey = parts.sublist(2).join('-');
 
-    setState(() {
-      _readNotifications.add(notificationId);
-    });
+        final db = FirebaseDatabase.instance.ref();
+        await db
+            .child(
+              'smartfarm/warning/$_userVarietas/$date/$sensorType/$pushKey',
+            )
+            .update({'isRead': true});
+
+        setState(() {
+          _readNotifications.add(notificationId);
+        });
+        // Reflect immediately in badge via shared cache
+        NotificationReadCache.instance.add(notificationId);
+      }
+    } catch (e) {
+      // Error handling
+      print('Error marking notification as read: $e');
+    }
+  }
+
+  Future<void> _markAllAsRead(List<Map<String, dynamic>> warnings) async {
+    if (_currentUserId == null || _userVarietas == null) return;
+
+    try {
+      final db = FirebaseDatabase.instance.ref();
+      int updateCount = 0;
+
+      // Update setiap notifikasi yang belum dibaca
+      print('Total warnings to check: ${warnings.length}');
+
+      for (final warning in warnings) {
+        final isReadValue = warning['isRead'];
+        final isAlreadyRead = _isReadValue(isReadValue);
+
+        print(
+          'Warning ID: ${warning['id']}, isRead: $isReadValue, isAlreadyRead: $isAlreadyRead',
+        );
+
+        if (!isAlreadyRead) {
+          final notifId = warning['id'] ?? '';
+          if (notifId.isNotEmpty) {
+            final parts = notifId.split('-');
+            if (parts.length >= 3) {
+              final date = parts[0];
+              final sensorType = parts[1];
+              final pushKey = parts.sublist(2).join('-');
+
+              final path =
+                  'smartfarm/warning/$_userVarietas/$date/$sensorType/$pushKey';
+              print('Updating path: $path');
+
+              // Update langsung ke path yang spesifik
+              try {
+                await db.child(path).update({'isRead': true});
+                print('Successfully updated: $path');
+                updateCount++;
+
+                setState(() {
+                  _readNotifications.add(notifId);
+                });
+                // Reflect immediately in badge via shared cache
+                NotificationReadCache.instance.add(notifId);
+              } catch (e) {
+                print('Error updating $path: $e');
+              }
+            }
+          }
+        }
+      }
+
+      print('Total updated: $updateCount');
+
+      // Show success message
+      if (mounted && updateCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$updateCount notifikasi telah ditandai sebagai sudah dibaca',
+            ),
+            backgroundColor: const Color(0xFF1B5E20),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Force refresh stream so badge + list update instantly
+        setState(() {
+          _warningStream = _getWarningsFromRealtimeDB().asBroadcastStream();
+        });
+      }
+    } catch (e) {
+      print('Error marking all as read: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal menandai notifikasi'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// Ambil warning dari Realtime Database hanya untuk varietas user
@@ -277,16 +365,45 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16.0),
-                  child: Text(
-                    '7 Hari Terakhir',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
+                // Header with Mark All as Read button
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '7 Hari Terakhir',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: _warningStream,
+                        builder: (context, snapshot) {
+                          final warnings = snapshot.data ?? [];
+                          final hasUnread = warnings.any(
+                            (w) => !_isReadValue(w['isRead']),
+                          );
+
+                          if (!hasUnread) return const SizedBox.shrink();
+
+                          return TextButton.icon(
+                            onPressed: () => _markAllAsRead(warnings),
+                            icon: const Icon(Icons.done_all, size: 18),
+                            label: const Text('Tandai Semua'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF1B5E20),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
 
@@ -358,7 +475,10 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
                     return Column(
                       children: warnings.map((warning) {
                         final notifId = warning['id'] ?? '';
-                        final isRead = _readNotifications.contains(notifId);
+                        final isReadValue = warning['isRead'];
+                        final isRead =
+                            _isReadValue(isReadValue) ||
+                            _readNotifications.contains(notifId);
                         final sensorType = (warning['sensor'] ?? '')
                             .toString()
                             .toUpperCase();
