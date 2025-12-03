@@ -1,7 +1,6 @@
-
 import 'package:flutter/material.dart';
-
-import '../widgets/app_scaffold.dart';
+import '../widgets/notification_badge.dart';
+import 'main_navigation_screen.dart';
 
 class KenaliTanamanmuScreen extends StatefulWidget {
   const KenaliTanamanmuScreen({Key? key}) : super(key: key);
@@ -15,44 +14,58 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
   final List<Map<String, String>> _plants = [
     {
       'name': 'Dewata F1',
-      'description_short': 'Dewata F1 adalah varietas cabai hibrida yang sangat produktif dan kuat. Cocok untuk dataran rendah hingga menengah...',
-      'description_full': 'Dewata F1 adalah varietas cabai hibrida yang sangat produktif dan kuat, cocok ditanam di dataran rendah hingga menengah, terutama pada daerah yang mendapatkan sinar matahari penuh sepanjang hari. Tanaman Dewata F1 membutuhkan suplai air yang stabil—tidak terlalu berlebih, namun juga tidak kekurangan—karena ritme produktivitasnya cepat dan intensif. Tanah liat berpasir yang subur membantu akar berkembang optimal, sementara pH tanah ideal berkisar antara 6.0 hingga 7.0. Dengan intensitas cahaya ideal 20.000–60.000 lux, varietas ini mampu menghasilkan buah seragam dan berkualitas tinggi. Dewata F1 sangat direkomendasikan untuk petani yang ingin mengejar hasil panen maksimal, asalkan lingkungan budidaya cukup panas dan pencahayaan kuat tersedia.',
+      'description_short':
+          'Dewata F1 adalah varietas cabai hibrida yang sangat produktif dan kuat. Cocok untuk dataran rendah hingga menengah...',
+      'description_full':
+          'Dewata F1 adalah varietas cabai hibrida yang sangat produktif dan kuat, cocok ditanam di dataran rendah hingga menengah, terutama pada daerah yang mendapatkan sinar matahari penuh sepanjang hari. Tanaman Dewata F1 membutuhkan suplai air yang stabil—tidak terlalu berlebih, namun juga tidak kekurangan—karena ritme produktivitasnya cepat dan intensif. Tanah liat berpasir yang subur membantu akar berkembang optimal, sementara pH tanah ideal berkisar antara 6.0 hingga 7.0. Dengan intensitas cahaya ideal 20.000–60.000 lux, varietas ini mampu menghasilkan buah seragam dan berkualitas tinggi. Dewata F1 sangat direkomendasikan untuk petani yang ingin mengejar hasil panen maksimal, asalkan lingkungan budidaya cukup panas dan pencahayaan kuat tersedia.',
       'image': 'assets/images/DewataF1.png',
     },
     {
       'name': 'CRV 211',
-      'description_short': 'CRV 211 adalah varietas cabai hibrida dengan produktivitas tinggi dan ketahanan penyakit utama...',
-      'description_full': 'CRV 211 adalah varietas cabai hibrida yang dikenal dengan produktivitas tinggi dan ketahanan terhadap penyakit utama. Cocok untuk dataran rendah hingga menengah, buahnya besar, seragam, dan tahan lama setelah panen. Varietas ini membutuhkan pencahayaan penuh dan penyiraman teratur agar hasil optimal.',
+      'description_short':
+          'CRV 211 adalah varietas cabai hibrida dengan produktivitas tinggi dan ketahanan penyakit utama...',
+      'description_full':
+          'CRV 211 adalah varietas cabai hibrida yang dikenal dengan produktivitas tinggi dan ketahanan terhadap penyakit utama. Cocok untuk dataran rendah hingga menengah, buahnya besar, seragam, dan tahan lama setelah panen. Varietas ini membutuhkan pencahayaan penuh dan penyiraman teratur agar hasil optimal.',
       'image': 'assets/images/CRV211.png',
     },
     {
       'name': 'Patra 3',
-      'description_short': 'Patra 3 adaptif di berbagai kondisi lahan, tahan cuaca panas dan hujan, pertumbuhan cepat...',
-      'description_full': 'Patra 3 adalah varietas cabai yang adaptif di berbagai kondisi lahan, tahan terhadap cuaca panas maupun hujan, serta memiliki pertumbuhan yang cepat. Buahnya merah cerah, tahan lama setelah panen, dan cocok untuk petani yang membutuhkan varietas fleksibel.',
+      'description_short':
+          'Patra 3 adaptif di berbagai kondisi lahan, tahan cuaca panas dan hujan, pertumbuhan cepat...',
+      'description_full':
+          'Patra 3 adalah varietas cabai yang adaptif di berbagai kondisi lahan, tahan terhadap cuaca panas maupun hujan, serta memiliki pertumbuhan yang cepat. Buahnya merah cerah, tahan lama setelah panen, dan cocok untuk petani yang membutuhkan varietas fleksibel.',
       'image': 'assets/images/Patra3.png',
     },
     {
       'name': 'Mhanu XR',
-      'description_short': 'Mhanu XR unggul dalam ketahanan terhadap kekeringan, cocok untuk lahan tadah hujan...',
-      'description_full': 'Mhanu XR adalah varietas cabai yang unggul dalam ketahanan terhadap kekeringan. Cocok untuk lahan tadah hujan, hasil buah tetap stabil meski curah hujan rendah. Buahnya pedas, berwarna merah cerah, dan tanaman relatif tahan penyakit.',
+      'description_short':
+          'Mhanu XR unggul dalam ketahanan terhadap kekeringan, cocok untuk lahan tadah hujan...',
+      'description_full':
+          'Mhanu XR adalah varietas cabai yang unggul dalam ketahanan terhadap kekeringan. Cocok untuk lahan tadah hujan, hasil buah tetap stabil meski curah hujan rendah. Buahnya pedas, berwarna merah cerah, dan tanaman relatif tahan penyakit.',
       'image': 'assets/images/MhanuXR.png',
     },
     {
       'name': 'Juwiring',
-      'description_short': 'Juwiring adalah varietas cabai lokal adaptif di berbagai kondisi lahan, buah merah cerah...',
-      'description_full': 'Juwiring adalah varietas cabai lokal yang adaptif di berbagai kondisi lahan. Buahnya merah cerah, tahan lama setelah panen, dan memiliki rasa pedas yang khas. Varietas ini cocok untuk petani tradisional maupun modern.',
+      'description_short':
+          'Juwiring adalah varietas cabai lokal adaptif di berbagai kondisi lahan, buah merah cerah...',
+      'description_full':
+          'Juwiring adalah varietas cabai lokal yang adaptif di berbagai kondisi lahan. Buahnya merah cerah, tahan lama setelah panen, dan memiliki rasa pedas yang khas. Varietas ini cocok untuk petani tradisional maupun modern.',
       'image': 'assets/images/Juwiring.png',
     },
     {
       'name': 'Bara',
-      'description_short': 'Bara adalah varietas cabai rawit unggul, cocok untuk dataran rendah hingga menengah...',
-      'description_full': 'Bara adalah varietas cabai rawit unggul yang cocok untuk dataran rendah hingga menengah. Tahan terhadap cuaca panas dan memiliki buah kecil yang pedas. Tanaman ini juga relatif tahan penyakit dan mudah beradaptasi.',
+      'description_short':
+          'Bara adalah varietas cabai rawit unggul, cocok untuk dataran rendah hingga menengah...',
+      'description_full':
+          'Bara adalah varietas cabai rawit unggul yang cocok untuk dataran rendah hingga menengah. Tahan terhadap cuaca panas dan memiliki buah kecil yang pedas. Tanaman ini juga relatif tahan penyakit dan mudah beradaptasi.',
       'image': 'assets/images/Bara.png',
     },
     {
       'name': 'Tavi',
-      'description_short': 'Tavi cocok untuk dataran menengah hingga tinggi, buah besar dan pedas...',
-      'description_full': 'Tavi adalah varietas cabai yang cocok untuk dataran menengah hingga tinggi, dengan buah besar dan rasa pedas yang khas. Tanaman ini membutuhkan suhu sejuk dan pencahayaan cukup agar hasil optimal.',
+      'description_short':
+          'Tavi cocok untuk dataran menengah hingga tinggi, buah besar dan pedas...',
+      'description_full':
+          'Tavi adalah varietas cabai yang cocok untuk dataran menengah hingga tinggi, dengan buah besar dan rasa pedas yang khas. Tanaman ini membutuhkan suhu sejuk dan pencahayaan cukup agar hasil optimal.',
       'image': 'assets/images/Tavi.png',
     },
   ];
@@ -67,14 +80,50 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      currentIndex: 2, // Dashboard
+    return Scaffold(
+      backgroundColor: const Color(0xFFE8F5E9),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1B5E20),
+        elevation: 0,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 80,
+        leadingWidth: 120,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Image.asset(
+            'assets/images/logo.png',
+            height: 90,
+            fit: BoxFit.contain,
+            errorBuilder: (c, e, s) =>
+                const Icon(Icons.eco, color: Colors.white),
+          ),
+        ),
+        title: const SizedBox.shrink(),
+        actions: [
+          NotificationBadgeStream(
+            child: const Icon(
+              Icons.notifications_outlined,
+              color: Colors.white,
+            ),
+            onTap: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => const MainNavigationScreen(initialIndex: 5),
+                  settings: const RouteSettings(
+                    arguments: {'initialIndex': 5, 'lastIndex': 2},
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Container(
             width: double.infinity,
-            color: Colors.white,
-            padding: const EdgeInsets.only(top: 24, bottom: 12),
+            padding: const EdgeInsets.only(top: 24),
             child: const Center(
               child: Text(
                 'Kenali Tanamanmu',
@@ -97,7 +146,10 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                 return Card(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: Color(0xFF0B6623), width: 1.2),
+                    side: const BorderSide(
+                      color: Color(0xFF0B6623),
+                      width: 1.2,
+                    ),
                   ),
                   elevation: 2,
                   child: Padding(
@@ -133,20 +185,30 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                               const SizedBox(height: 8),
                               Builder(
                                 builder: (context) {
-                                  final short = plant['description_short'] ?? '-';
+                                  final short =
+                                      plant['description_short'] ?? '-';
                                   final full = plant['description_full'] ?? '-';
                                   if (isExpanded) {
                                     return Text(
                                       full,
-                                      style: const TextStyle(fontSize: 15, color: Colors.black87),
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.black87,
+                                      ),
                                     );
                                   } else {
                                     final showEllipsis = short.length > 90;
                                     return Text(
-                                      showEllipsis ? short.substring(0, 90).trimRight() + '...' : short,
+                                      showEllipsis
+                                          ? short.substring(0, 90).trimRight() +
+                                                '...'
+                                          : short,
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 15, color: Colors.black87),
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.black87,
+                                      ),
                                     );
                                   }
                                 },
@@ -162,13 +224,27 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                                       });
                                     },
                                     style: OutlinedButton.styleFrom(
-                                      side: const BorderSide(color: Color(0xFF0B6623)),
+                                      side: const BorderSide(
+                                        color: Color(0xFF0B6623),
+                                      ),
                                       foregroundColor: const Color(0xFF0B6623),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 8,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                    child: Text(isExpanded ? 'Lebih Sedikit' : 'Selengkapnya'),
+                                    child: Text(
+                                      isExpanded
+                                          ? 'Lebih Sedikit'
+                                          : 'Selengkapnya',
+                                    ),
                                   ),
                                 ],
                               ),
@@ -183,6 +259,98 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B5E20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(
+                  icon: Icons.toggle_on_outlined,
+                  label: 'Kontrol',
+                  route: '/main',
+                  index: 0,
+                ),
+                _buildNavItem(
+                  icon: Icons.history,
+                  label: 'Histori',
+                  route: '/main',
+                  index: 1,
+                ),
+                _buildNavItem(
+                  icon: Icons.dashboard_outlined,
+                  label: 'Dashboard',
+                  route: '/main',
+                  index: 2,
+                ),
+                _buildNavItem(
+                  icon: Icons.settings_outlined,
+                  label: 'Pengaturan',
+                  route: '/main',
+                  index: 3,
+                ),
+                _buildNavItem(
+                  icon: Icons.person_outline,
+                  label: 'Profile',
+                  route: '/main',
+                  index: 4,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required String route,
+    required int index,
+  }) {
+    return InkWell(
+      onTap: () {
+        Navigator.pushReplacementNamed(
+          context,
+          route,
+          arguments: {'initialIndex': index},
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white70, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

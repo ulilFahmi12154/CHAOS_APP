@@ -488,31 +488,70 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: Color(0xFF2D5F40),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Varietas: ${_activeVarietas ?? '-'}',
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-
                 const SizedBox(height: 16),
 
-                // Data Type Grid (2 x 3 untuk 5 item)
+                // Data Type Dropdown
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 2.5,
-                    children: [
-                      _buildDataTypeTab('Kelembapan\nTanah', 0),
-                      _buildDataTypeTab('Suhu\nUdara', 1),
-                      _buildDataTypeTab('Intensitas\nCahaya', 2),
-                      _buildDataTypeTab('Kelembapan\nUdara', 3),
-                      _buildDataTypeTab('pH\nTanah', 4),
-                    ],
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF2D5F40),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _selectedDataType,
+                        isExpanded: true,
+                        icon: const Icon(
+                          Icons.arrow_drop_down,
+                          color: Color(0xFF2D5F40),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2D5F40),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 0,
+                            child: Text('Kelembapan Tanah'),
+                          ),
+                          DropdownMenuItem(value: 1, child: Text('Suhu Udara')),
+                          DropdownMenuItem(
+                            value: 2,
+                            child: Text('Intensitas Cahaya'),
+                          ),
+                          DropdownMenuItem(
+                            value: 3,
+                            child: Text('Kelembapan Udara'),
+                          ),
+                          DropdownMenuItem(value: 4, child: Text('pH Tanah')),
+                        ],
+                        onChanged: (int? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              _selectedDataType = newValue;
+                              _calculateStats();
+                            });
+                          }
+                        },
+                      ),
+                    ),
                   ),
                 ),
 
@@ -626,68 +665,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
   }
 
-  Widget _buildDataTypeTab(String text, int index) {
-    bool isSelected = _selectedDataType == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedDataType = index;
-          _calculateStats();
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF10B981) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF10B981) : Colors.grey.shade300,
-          ),
-        ),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildTimeFilterChips() {
     final labels = const ['Hari Ini', 'Bulan Ini', 'Tahun Ini'];
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
       children: List.generate(labels.length, (i) {
         final selected = _selectedTimeFilter == i;
-        return ChoiceChip(
-          label: Text(
-            labels[i],
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-              color: selected ? Colors.white : Colors.black87,
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: i == 0 ? 0 : 4,
+              right: i == labels.length - 1 ? 0 : 4,
+            ),
+            child: ChoiceChip(
+              label: SizedBox(
+                width: double.infinity,
+                child: Text(
+                  labels[i],
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    color: selected ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+              selected: selected,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              backgroundColor: Colors.white,
+              selectedColor: const Color(0xFF2D5F40),
+              side: BorderSide(
+                color: selected
+                    ? const Color(0xFF2D5F40)
+                    : Colors.grey.shade300,
+              ),
+              onSelected: (_) {
+                setState(() {
+                  _selectedTimeFilter = i;
+                  _calculateStats();
+                });
+              },
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
             ),
           ),
-          selected: selected,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          backgroundColor: Colors.white,
-          selectedColor: const Color(0xFF2D5F40),
-          side: BorderSide(
-            color: selected ? const Color(0xFF2D5F40) : Colors.grey.shade300,
-          ),
-          onSelected: (_) {
-            setState(() {
-              _selectedTimeFilter = i;
-              _calculateStats();
-            });
-          },
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         );
       }),
     );

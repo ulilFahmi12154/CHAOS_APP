@@ -1299,12 +1299,31 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withOpacity(0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 28),
+            child: Builder(
+              builder: (context) {
+                // Use chili emoji for Kenali Tanamanmu card in fixed box for symmetry
+                if (title.toLowerCase().contains('tanaman')) {
+                  return const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Center(
+                      child: Text(
+                        '🌶',
+                        textAlign: TextAlign.center,
+                        // Slightly smaller to avoid clipping in circle
+                        style: TextStyle(fontSize: 24, height: 1.0),
+                      ),
+                    ),
+                  );
+                }
+                return Icon(icon, color: color, size: 28);
+              },
+            ),
           ),
           const SizedBox(height: 8),
           Text(
