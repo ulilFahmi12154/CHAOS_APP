@@ -813,6 +813,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   'light_max': data['light_max'] ?? 4095,
                                   'ph_min': data['ph_min'] ?? 5.8,
                                   'ph_max': data['ph_max'] ?? 6.5,
+                                  'nitrogen_min': data['nitrogen_min'] ?? 200,
+                                  'nitrogen_max': data['nitrogen_max'] ?? 340,
+                                  'phosphorus_min':
+                                      data['phosphorus_min'] ?? 150,
+                                  'phosphorus_max':
+                                      data['phosphorus_max'] ?? 240,
+                                  'potassium_min': data['potassium_min'] ?? 190,
+                                  'potassium_max': data['potassium_max'] ?? 320,
+                                  'ec_min': data['ec_min'] ?? 1000,
+                                  'ec_max': data['ec_max'] ?? 3000,
                                   'nama': data['nama'] ?? varietasId,
                                 });
 

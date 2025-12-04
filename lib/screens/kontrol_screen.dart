@@ -555,17 +555,17 @@ class _KontrolScreenState extends State<KontrolScreen> {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.yellow.shade50,
+                                  color: Colors.green.shade50,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: Colors.yellow.shade200,
+                                    color: Colors.green.shade200,
                                   ),
                                 ),
                                 child: const Row(
                                   children: [
                                     Icon(
-                                      Icons.warning_amber,
-                                      color: Colors.orange,
+                                      Icons.check_circle,
+                                      color: Colors.green,
                                       size: 20,
                                     ),
                                     SizedBox(width: 8),
@@ -574,7 +574,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                         'Pompa sedang aktif. Klik "Matikan Pompa" untuk berhenti.',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.orange,
+                                          color: Colors.green,
                                         ),
                                       ),
                                     ),
