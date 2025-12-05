@@ -305,6 +305,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (mounted) {
       setState(() {
         _showTourOverlay = false;
+        // Kembali ke dashboard setelah tour selesai
+        _currentIndex = 2;
       });
     }
   }

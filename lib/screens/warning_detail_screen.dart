@@ -362,6 +362,7 @@ class WarningDetailScreen extends StatelessWidget {
         'sensor',
         'source',
         'type',
+        'id',
       };
       warning.forEach((k, v) {
         if (!skip.contains(k)) {
@@ -524,28 +525,52 @@ class WarningDetailScreen extends StatelessWidget {
   }
 
   Widget _buildTimestampCard() {
-    DateTime? dt;
     String timeStr = '--:--';
     String dateStr = 'Tanggal tidak tersedia';
 
     try {
+      // Format time from timestamp (matching notifikasi_screen logic)
       if (warning['timestamp'] != null) {
         final ts = warning['timestamp'];
+        int millis = 0;
+
         if (ts is Timestamp) {
-          dt = ts.toDate();
+          millis = ts.toDate().millisecondsSinceEpoch;
         } else if (ts is int) {
-          dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        } else {
-          dt = DateTime.parse(ts.toString());
+          millis = ts < 100000000000 ? ts * 1000 : ts;
+        } else if (ts is String) {
+          millis = int.tryParse(ts) ?? 0;
+          if (millis < 100000000000) millis *= 1000;
         }
 
-        timeStr = DateFormat('HH:mm:ss').format(dt);
-        dateStr = DateFormat('dd MMMM yyyy, EEEE', 'id_ID').format(dt);
+        if (millis > 0) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(millis);
+          timeStr = DateFormat('HH:mm').format(dt);
+        }
+      }
+
+      // Format date label (matching notifikasi_screen logic)
+      if (warning['date'] != null && warning['date'].toString().isNotEmpty) {
+        final date = warning['date'].toString();
+        final dt = DateTime.parse(date);
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final yesterday = today.subtract(const Duration(days: 1));
+        final itemDate = DateTime(dt.year, dt.month, dt.day);
+
+        if (itemDate == today) {
+          dateStr = 'Hari Ini, $timeStr';
+        } else if (itemDate == yesterday) {
+          dateStr = 'Kemarin, $timeStr';
+        } else {
+          dateStr = '${DateFormat('d MMM', 'id_ID').format(dt)}, $timeStr';
+        }
+      } else {
+        dateStr = timeStr;
       }
     } catch (_) {
       // Keep default values
     }
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -572,13 +597,8 @@ class WarningDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            timeStr,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text(
             dateStr,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
         ],
       ),

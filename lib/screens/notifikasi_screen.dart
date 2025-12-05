@@ -371,12 +371,26 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        '7 Hari Terakhir',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.shade200,
+                            width: 1,
+                          ),
+                        ),
+                        child: const Text(
+                          '7 Hari Terakhir',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1B5E20),
+                          ),
                         ),
                       ),
                       StreamBuilder<List<Map<String, dynamic>>>(
@@ -389,15 +403,25 @@ class _NotifikasiScreenState extends State<NotifikasiScreen> {
 
                           if (!hasUnread) return const SizedBox.shrink();
 
-                          return TextButton.icon(
-                            onPressed: () => _markAllAsRead(warnings),
-                            icon: const Icon(Icons.done_all, size: 18),
-                            label: const Text('Tandai Semua'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF1B5E20),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.green.shade200,
+                                width: 1,
+                              ),
+                            ),
+                            child: TextButton.icon(
+                              onPressed: () => _markAllAsRead(warnings),
+                              icon: const Icon(Icons.done_all, size: 18),
+                              label: const Text('Tandai Sudah Dibaca'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF1B5E20),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                               ),
                             ),
                           );
