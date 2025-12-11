@@ -263,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           _buildHeaderCard(context),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (belumPilih)
             Container(
               padding: const EdgeInsets.all(16),
@@ -309,18 +309,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 16),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildIrigasiCard(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildWarningNotif(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildSensorGrid(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildNutrisiCard(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildRecommendationRow(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
         ],
       ),
     );
