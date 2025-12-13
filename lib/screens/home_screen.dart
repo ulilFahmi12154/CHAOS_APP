@@ -97,6 +97,34 @@ class _HomeScreenState extends State<HomeScreen> {
   final RealtimeDbService _dbService = RealtimeDbService();
   String? activeVarietas;
   bool pompaStatus = false;
+  String _userLocation = 'Loading...';
+
+  // Get user location from Firebase
+  Future<void> _loadUserLocation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (snapshot.exists && mounted) {
+          final data = snapshot.data();
+          setState(() {
+            _userLocation = data?['location'] ?? 'Unknown Location';
+          });
+        }
+      } catch (e) {
+        setState(() {
+          _userLocation = 'Unknown Location';
+        });
+      }
+    } else {
+      setState(() {
+        _userLocation = 'Not Logged In';
+      });
+    }
+  }
 
   // Ambang batas dari settings (default values)
   double suhuMin = 22, suhuMax = 28;
@@ -117,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadActiveVarietas();
     _loadUserSettings();
+    _loadUserLocation();
   }
 
   /// Load config varietas dari Firestore untuk mendapatkan min/max ranges
@@ -258,70 +287,393 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildHeaderCard(context),
-          const SizedBox(height: 16),
-          if (belumPilih)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade50, Colors.white],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildModernHeader(context),
+            const SizedBox(height: 20),
+            _buildWeatherLocationCard(),
+            const SizedBox(height: 20),
+            // Warning/Alert Section - Priority!
+            _buildWarningNotif(),
+            const SizedBox(height: 20),
+            _buildPlantHealthCard(),
+            const SizedBox(height: 20),
+            _buildPumpModeCard(context),
+            const SizedBox(height: 20),
+            _buildSensorSection(),
+            const SizedBox(height: 24),
+            const Text(
+              'Quick Access',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            _buildRecommendationRow(),
+            const SizedBox(height: 20),
+            _buildUpcomingTasksSection(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Weather & Location Card with Real Sensor Data
+  Widget _buildWeatherLocationCard() {
+    final now = DateTime.now();
+    final dateStr =
+        '${now.day.toString().padLeft(2, '0')} ${_monthName(now.month)} ${now.year}';
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final varietasToUse = activeVarietas ?? 'default';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.amber.shade50, Colors.orange.shade50],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: StreamBuilder<dynamic>(
+        stream: _dbService.suhuStream(varietasToUse),
+        builder: (context, tempSnapshot) {
+          final temp = tempSnapshot.hasData ? tempSnapshot.data : '--';
+
+          return StreamBuilder<dynamic>(
+            stream: _dbService.kelembapanUdaraStream(varietasToUse),
+            builder: (context, humSnapshot) {
+              final humidity = humSnapshot.hasData ? humSnapshot.data : '--';
+
+              return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header: Location and Date
                   Row(
                     children: [
                       Icon(
-                        Icons.info_outline,
-                        color: Colors.orange.shade700,
-                        size: 28,
+                        Icons.location_on,
+                        color: Colors.grey.shade700,
+                        size: 16,
                       ),
-                      const SizedBox(width: 12),
-                      const Expanded(
+                      const SizedBox(width: 4),
+                      Text(
+                        _userLocation,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$dateStr',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  Text(
+                    timeStr,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Main Content: Big Temperature Display
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Left: Weather Icon
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.7),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.withOpacity(0.2),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.wb_sunny,
+                          color: Colors.orange.shade600,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+
+                      // Center: Temperature
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Dashboard Default',
+                              'Sunny',
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
                               ),
                             ),
-                            Text(
-                              'Pilih varietas untuk data real-time',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange,
-                              ),
+                            const SizedBox(height: 4),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  temp is num
+                                      ? '${temp.toStringAsFixed(0)}'
+                                      : temp.toString(),
+                                  style: TextStyle(
+                                    fontSize: 56,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0,
+                                    color: Colors.grey.shade900,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    '°C',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // Humidity info
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.water_drop,
+                                  size: 16,
+                                  color: Colors.blue.shade600,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'H: ${humidity is num ? humidity.toStringAsFixed(0) : humidity}%',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                if (temp is num) ...[
+                                  Icon(
+                                    Icons.thermostat,
+                                    size: 16,
+                                    color: Colors.orange.shade600,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'L: ${(temp - 5).toStringAsFixed(0)}°C',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade700,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // Bottom: Varietas Info (if selected)
+                  if (activeVarietas != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.eco,
+                            size: 14,
+                            color: Colors.green.shade700,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            activeVarietas!.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
-              ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  String _monthName(int month) {
+    const months = [
+      '',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month];
+  }
+
+  // Pump & Mode Card (merged, clickable)
+  Widget _buildPumpModeCard(BuildContext context) {
+    final varietasToUse = activeVarietas ?? 'default';
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(context, '/kontrol');
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.green.shade700.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          const SizedBox(height: 16),
-          const SizedBox(height: 16),
-          _buildIrigasiCard(),
-          const SizedBox(height: 16),
-          _buildWarningNotif(),
-          const SizedBox(height: 16),
-          _buildSensorGrid(),
-          const SizedBox(height: 16),
-          _buildNutrisiCard(),
-          const SizedBox(height: 16),
-          _buildRecommendationRow(),
-          const SizedBox(height: 24),
-        ],
+          ],
+        ),
+        child: Row(
+          children: [
+            StreamBuilder<dynamic>(
+              stream: FirebaseDatabase.instance
+                  .ref('smartfarm/sensors/$varietasToUse/pompa')
+                  .onValue
+                  .map((e) => e.snapshot.value),
+              builder: (context, snapshot) {
+                bool isOn = snapshot.data == 'ON';
+                return Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isOn
+                            ? Colors.blue.shade100
+                            : Colors.grey.shade200,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isOn ? Icons.water : Icons.water_drop_outlined,
+                        color: isOn ? Colors.blue : Colors.grey,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isOn ? 'Pump ON' : 'Pump OFF',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isOn ? Colors.blue : Colors.grey,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(width: 24),
+            StreamBuilder<dynamic>(
+              stream: FirebaseDatabase.instance
+                  .ref('smartfarm/mode_otomatis')
+                  .onValue
+                  .map((e) => e.snapshot.value),
+              builder: (context, snapshot) {
+                bool isAuto = snapshot.data == true;
+                return Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isAuto
+                            ? Colors.green.shade100
+                            : Colors.orange.shade100,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isAuto ? Icons.auto_mode : Icons.touch_app,
+                        color: isAuto ? Colors.green : Colors.orange,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isAuto ? 'Auto Mode' : 'Manual',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isAuto ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const Spacer(),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.green.shade700,
+              size: 22,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -503,6 +855,1026 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Modern Header with greeting and date
+  Widget _buildModernHeader(BuildContext context) {
+    final now = DateTime.now();
+    final hour = now.hour;
+    String greeting = 'Good Morning';
+    if (hour >= 12 && hour < 18) greeting = 'Good Afternoon';
+    if (hour >= 18) greeting = 'Good Evening';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              greeting,
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Smart Farmer',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Varietas Selection Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: activeVarietas != null
+              ? Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.spa,
+                        color: Colors.green.shade700,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Currently Growing',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            activeVarietas!.replaceAll('_', ' ').toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/settings');
+                      },
+                      icon: Icon(Icons.edit, color: Colors.green.shade700),
+                      tooltip: 'Change Variety',
+                    ),
+                    IconButton(
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Hapus Varietas'),
+                            content: const Text(
+                              'Yakin ingin menghapus varietas yang sedang dipilih?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Batal'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  'Hapus',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user != null) {
+                            final db = FirebaseDatabase.instance.ref();
+                            await db
+                                .child('users/${user.uid}/active_varietas')
+                                .remove();
+                            await db.child('smartfarm/active_varietas').set("");
+                            if (mounted) {
+                              setState(() {
+                                activeVarietas = null;
+                              });
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Varietas dihapus.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      tooltip: 'Hapus Varietas',
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.eco_outlined,
+                        color: Colors.orange.shade700,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'No Variety Selected',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Choose what you want to plant',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/settings');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Select'),
+                    ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  // Plant Health Card - large card with image, circular progress
+  Widget _buildPlantHealthCard() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return _buildEmptyPlantCard();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final waktuTanam = data?['waktu_tanam'] as int?;
+
+        if (waktuTanam == null) {
+          return _buildEmptyPlantCard();
+        }
+
+        // Hitung umur dan fase
+        final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
+        final umurHari = DateTime.now().difference(tanamDate).inDays + 1;
+        final progressPanen = (umurHari / 91).clamp(0.0, 1.0);
+
+        String fase = 'Vegetatif';
+        Color faseColor = Colors.green;
+        if (umurHari > 90) {
+          fase = 'Siap Panen';
+          faseColor = Colors.red;
+        } else if (umurHari > 70) {
+          fase = 'Pembuahan';
+          faseColor = Colors.orange;
+        } else if (umurHari > 60) {
+          fase = 'Pembungaan';
+          faseColor = Colors.purple;
+        } else if (umurHari > 30) {
+          fase = 'Generatif';
+          faseColor = Colors.blue;
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [faseColor.withOpacity(0.15), Colors.white],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: faseColor.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+            border: Border.all(color: faseColor.withOpacity(0.3), width: 2),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  // Circular Progress
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 100,
+                        height: 100,
+                        child: CircularProgressIndicator(
+                          value: progressPanen,
+                          strokeWidth: 10,
+                          backgroundColor: faseColor.withOpacity(0.2),
+                          valueColor: AlwaysStoppedAnimation<Color>(faseColor),
+                        ),
+                      ),
+                      Container(
+                        width: 70,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Icon(Icons.eco, color: faseColor, size: 36),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Fase Pertumbuhan',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          fase,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: faseColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 18,
+                              color: faseColor,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Umur: $umurHari hari',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.trending_up, size: 18, color: faseColor),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Progress: ${(progressPanen * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        Icon(Icons.water_drop, color: faseColor, size: 24),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ditanam',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Text(
+                          '${tanamDate.day}/${tanamDate.month}/${tanamDate.year}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: faseColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: Colors.grey.shade300,
+                    ),
+                    Column(
+                      children: [
+                        Icon(Icons.agriculture, color: faseColor, size: 24),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Target Panen',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Text(
+                          umurHari >= 91
+                              ? 'Siap Panen!'
+                              : '${91 - umurHari} hari lagi',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: umurHari >= 91 ? Colors.green : faseColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyPlantCard() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.shade50, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+        border: Border.all(color: Colors.orange.shade200, width: 2),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.calendar_today,
+              size: 48,
+              color: Colors.orange.shade700,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Waktu Tanam Belum Diatur',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Atur waktu tanam di halaman Pengaturan untuk memantau pertumbuhan tanaman Anda',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade700,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(context, '/settings');
+            },
+            icon: const Icon(Icons.settings, size: 20),
+            label: const Text(
+              'Pergi ke Pengaturan',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Quick Stats Row - pompa status, warnings, etc
+  Widget _buildQuickStatsRow() {
+    final varietasToUse = activeVarietas ?? 'default';
+
+    return Row(
+      children: [
+        Expanded(
+          child: StreamBuilder<dynamic>(
+            stream: FirebaseDatabase.instance
+                .ref('smartfarm/sensors/$varietasToUse/pompa')
+                .onValue
+                .map((e) => e.snapshot.value),
+            builder: (context, snapshot) {
+              bool isOn = snapshot.data == 'ON';
+              return _buildQuickStatCard(
+                'Pump',
+                isOn ? 'Active' : 'Off',
+                isOn ? Icons.water : Icons.water_drop_outlined,
+                isOn ? Colors.blue : Colors.grey,
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: StreamBuilder<dynamic>(
+            stream: FirebaseDatabase.instance
+                .ref('smartfarm/mode_otomatis')
+                .onValue
+                .map((e) => e.snapshot.value),
+            builder: (context, snapshot) {
+              bool isAuto = snapshot.data == true;
+              return _buildQuickStatCard(
+                'Mode',
+                isAuto ? 'Auto' : 'Manual',
+                isAuto ? Icons.auto_mode : Icons.touch_app,
+                isAuto ? Colors.green : Colors.orange,
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildQuickStatCard(
+            'Weather',
+            'Sunny',
+            Icons.wb_sunny,
+            Colors.amber,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Sensor Section - horizontal scroll cards
+  Widget _buildSensorSection() {
+    final varietasToUse = activeVarietas ?? 'default';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Sensor Data',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        // Grid 3 kolom
+        Row(
+          children: [
+            Expanded(
+              child: _buildModernSensorCard(
+                'Temperature',
+                Icons.thermostat,
+                Colors.orange,
+                _dbService.suhuStream(varietasToUse),
+                '°C',
+                suhuMin,
+                suhuMax,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModernSensorCard(
+                'Humidity',
+                Icons.opacity,
+                Colors.blue,
+                _dbService.kelembapanUdaraStream(varietasToUse),
+                '%',
+                humMin,
+                humMax,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModernSensorCard(
+                'Soil Moisture',
+                Icons.water_drop,
+                Colors.green,
+                _dbService.kelembapanTanahStream(varietasToUse),
+                '',
+                soilMin,
+                soilMax,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildModernSensorCard(
+                'Light',
+                Icons.light_mode,
+                Colors.amber,
+                _dbService.cahayaStream(varietasToUse),
+                'lux',
+                luxMin,
+                luxMax,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModernSensorCard(
+                'pH Soil',
+                Icons.science,
+                Colors.purple,
+                _dbService.phTanahStream(varietasToUse),
+                'pH',
+                phMin,
+                phMax,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModernSensorCard(
+                'EC/TDS',
+                Icons.water,
+                Colors.teal,
+                _dbService.ecStream(varietasToUse),
+                '',
+                ecMin,
+                ecMax,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernSensorCard(
+    String title,
+    IconData icon,
+    Color color,
+    Stream<dynamic> dataStream,
+    String unit,
+    num minBatas,
+    num maxBatas,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: StreamBuilder<dynamic>(
+        stream: dataStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data != null) {
+            final value = snapshot.data;
+            final progress = ((value - minBatas) / (maxBatas - minBatas)).clamp(
+              0.0,
+              1.0,
+            );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Icon Container
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.2),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: color, size: 28),
+                ),
+                const SizedBox(height: 14),
+                // Title
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                // Value
+                Text(
+                  value is num
+                      ? '${value.toStringAsFixed(unit == 'pH' ? 1 : 0)}$unit'
+                      : '$value$unit',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade900,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Progress Bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 8,
+                    backgroundColor: Colors.white.withOpacity(0.5),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color.withOpacity(0.5), size: 28),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '--',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade400,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // Upcoming Tasks Section
+  Widget _buildUpcomingTasksSection() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final waktuTanam = data?['waktu_tanam'] as int?;
+
+        if (waktuTanam == null) return const SizedBox.shrink();
+
+        final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
+        final umurHari = DateTime.now().difference(tanamDate).inDays + 1;
+
+        final jadwalPupuk = [
+          {'hari': 7, 'task': 'NPK Fertilizer 1', 'type': 'Fertilizing'},
+          {'hari': 14, 'task': 'NPK Fertilizer 2', 'type': 'Fertilizing'},
+          {'hari': 21, 'task': 'NPK Fertilizer 3', 'type': 'Fertilizing'},
+          {'hari': 30, 'task': 'Organic Fertilizer', 'type': 'Fertilizing'},
+          {'hari': 45, 'task': 'NPK Fertilizer 4', 'type': 'Fertilizing'},
+          {'hari': 60, 'task': 'Foliar Fertilizer', 'type': 'Fertilizing'},
+          {'hari': 91, 'task': 'Harvest Time', 'type': 'Harvesting'},
+        ];
+
+        final upcomingTasks = jadwalPupuk
+            .where((j) => umurHari <= (j['hari'] as int))
+            .take(3)
+            .toList();
+
+        if (upcomingTasks.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Upcoming Tasks',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/nutrient-recommendation');
+                  },
+                  child: const Text('See All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...upcomingTasks.map((task) {
+              final hari = task['hari'] as int;
+              final taskName = task['task'] as String;
+              final taskType = task['type'] as String;
+              final daysLeft = hari - umurHari;
+
+              Color badgeColor = Colors.green;
+              if (taskType == 'Harvesting') badgeColor = Colors.red;
+              if (daysLeft <= 3) badgeColor = Colors.orange;
+
+              return InkWell(
+                onTap: () {
+                  // Navigate to nutrient recommendation for fertilizer tasks
+                  Navigator.pushNamed(context, '/nutrient-recommendation');
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: badgeColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$daysLeft',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: badgeColor,
+                              ),
+                            ),
+                            Text(
+                              'days',
+                              style: TextStyle(fontSize: 10, color: badgeColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              taskName,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: badgeColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    taskType,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: badgeColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Day $hari',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 
@@ -1251,6 +2623,210 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFasePertumbuhanCard() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final waktuTanam = data?['waktu_tanam'] as int?;
+
+        if (waktuTanam == null) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.settings, color: Colors.orange.shade700, size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Atur waktu tanam di halaman Pengaturan untuk memantau fase pertumbuhan',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Hitung umur dan fase
+        final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
+        final umurHari = DateTime.now().difference(tanamDate).inDays + 1;
+        String fase = '';
+        Color faseColor = Colors.green;
+        IconData faseIcon = Icons.eco;
+
+        if (umurHari <= 30) {
+          fase = 'Vegetatif';
+          faseColor = Colors.green;
+          faseIcon = Icons.grass;
+        } else if (umurHari <= 60) {
+          fase = 'Generatif';
+          faseColor = Colors.blue;
+          faseIcon = Icons.spa;
+        } else if (umurHari <= 70) {
+          fase = 'Pembungaan';
+          faseColor = Colors.purple;
+          faseIcon = Icons.local_florist;
+        } else if (umurHari <= 90) {
+          fase = 'Pembuahan';
+          faseColor = Colors.orange;
+          faseIcon = Icons.energy_savings_leaf;
+        } else {
+          fase = 'Siap Panen';
+          faseColor = Colors.red;
+          faseIcon = Icons.agriculture;
+        }
+
+        // Jadwal pupuk (contoh sederhana)
+        final jadwalPupuk = [
+          {'hari': 7, 'pupuk': 'Pupuk NPK 1'},
+          {'hari': 14, 'pupuk': 'Pupuk NPK 2'},
+          {'hari': 21, 'pupuk': 'Pupuk NPK 3'},
+          {'hari': 30, 'pupuk': 'Pupuk Organik'},
+          {'hari': 45, 'pupuk': 'Pupuk NPK 4'},
+          {'hari': 60, 'pupuk': 'Pupuk Daun'},
+        ];
+
+        String? pupukBerikutnya;
+        int? hariPupuk;
+        for (var jadwal in jadwalPupuk) {
+          final hariJadwal = jadwal['hari'] as int;
+          if (umurHari < hariJadwal) {
+            pupukBerikutnya = jadwal['pupuk'] as String;
+            hariPupuk = hariJadwal;
+            break;
+          }
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [faseColor.withOpacity(0.3), faseColor.withOpacity(0.1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: faseColor.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(faseIcon, color: faseColor, size: 28),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Fase: $fase',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: faseColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Umur Tanaman',
+                        style: TextStyle(fontSize: 12, color: faseColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$umurHari Hari',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: faseColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (pupukBerikutnya != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Pupuk Berikutnya',
+                          style: TextStyle(fontSize: 12, color: faseColor),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Hari ke-$hariPupuk',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: faseColor,
+                          ),
+                        ),
+                        Text(
+                          pupukBerikutnya,
+                          style: TextStyle(fontSize: 11, color: faseColor),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: faseColor.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: faseColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        fase == 'Siap Panen'
+                            ? 'Tanaman sudah siap dipanen! 🌶️'
+                            : 'Pastikan kelembapan dan nutrisi optimal untuk fase $fase',
+                        style: TextStyle(fontSize: 11, color: faseColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRecommendationRow() {
     return Row(
       children: [
@@ -1268,7 +2844,7 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
             'Kenali\nTanamanmu',
             Icons.local_florist,
-            Colors.red.shade700,
+            Colors.red,
           ),
         ),
       ],
@@ -1281,81 +2857,98 @@ class _HomeScreenState extends State<HomeScreen> {
     IconData icon,
     Color color,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () {
+        if (title.toLowerCase().contains('pupuk')) {
+          Navigator.pushNamed(context, '/nutrient-recommendation');
+        } else if (title.toLowerCase().contains('tanaman')) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const KenaliTanamanmuScreen(),
             ),
-            child: Builder(
-              builder: (context) {
-                // Use chili emoji for Kenali Tanamanmu card in fixed box for symmetry
-                if (title.toLowerCase().contains('tanaman')) {
-                  return const SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: Center(
-                      child: Text(
-                        '🌶',
-                        textAlign: TextAlign.center,
-                        // Slightly smaller to avoid clipping in circle
-                        style: TextStyle(fontSize: 24, height: 1.0),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Builder(
+                builder: (context) {
+                  // Use chili emoji for Kenali Tanamanmu card in fixed box for symmetry
+                  if (title.toLowerCase().contains('tanaman')) {
+                    return const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Center(
+                        child: Text(
+                          '🌶',
+                          textAlign: TextAlign.center,
+                          // Slightly smaller to avoid clipping in circle
+                          style: TextStyle(fontSize: 24, height: 1.0),
+                        ),
                       ),
+                    );
+                  }
+                  return Icon(icon, color: color, size: 28);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                if (title.toLowerCase().contains('pupuk')) {
+                  Navigator.pushNamed(context, '/nutrient-recommendation');
+                } else if (title.toLowerCase().contains('tanaman')) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const KenaliTanamanmuScreen(),
                     ),
                   );
                 }
-                return Icon(icon, color: color, size: 28);
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(32),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                elevation: 0,
+              ),
+              child: const Text("Lihat Detail"),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: () {
-              // Jika kartu adalah Rekomendasi Pupuk, buka halaman rekomendasi nutrisi interaktif
-              if (title.toLowerCase().contains('pupuk')) {
-                Navigator.pushNamed(context, '/nutrient-recommendation');
-              } else if (title.toLowerCase().contains('tanaman')) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => KenaliTanamanmuScreen(),
-                  ),
-                );
-              } else {
-                Navigator.pushNamed(context, '/profile');
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size.fromHeight(32),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              textStyle: const TextStyle(fontSize: 12),
-            ),
-            child: const Text("Lihat Detail"),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

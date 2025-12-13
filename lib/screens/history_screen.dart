@@ -50,6 +50,155 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
+  Future<void> _showLaporanDialog() async {
+    // Hitung rekap dari data history
+    int totalDataPoints = _historyData.length;
+    double avgKelembapan = 0;
+    double avgSuhu = 0;
+    double avgCahaya = 0;
+    int countKelembapan = 0;
+    int countSuhu = 0;
+    int countCahaya = 0;
+
+    for (var data in _historyData) {
+      if (data['kelembapan_tanah'] != null) {
+        avgKelembapan += (data['kelembapan_tanah'] as num).toDouble();
+        countKelembapan++;
+      }
+      if (data['suhu'] != null) {
+        avgSuhu += (data['suhu'] as num).toDouble();
+        countSuhu++;
+      }
+      if (data['cahaya'] != null) {
+        avgCahaya += (data['cahaya'] as num).toDouble();
+        countCahaya++;
+      }
+    }
+
+    if (countKelembapan > 0) avgKelembapan /= countKelembapan;
+    if (countSuhu > 0) avgSuhu /= countSuhu;
+    if (countCahaya > 0) avgCahaya /= countCahaya;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.assessment, color: Colors.green.shade700),
+            const SizedBox(width: 8),
+            const Text('Laporan Aktivitas'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Rekap Data Monitoring',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              _buildLaporanItem(
+                'Total Data Points',
+                '$totalDataPoints',
+                Icons.data_usage,
+              ),
+              const Divider(height: 20),
+              const Text(
+                'Rata-rata Sensor:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildLaporanItem(
+                'Kelembapan Tanah',
+                '${avgKelembapan.toStringAsFixed(1)} ADC',
+                Icons.water_drop,
+              ),
+              _buildLaporanItem(
+                'Suhu Udara',
+                '${avgSuhu.toStringAsFixed(1)} °C',
+                Icons.thermostat,
+              ),
+              _buildLaporanItem(
+                'Intensitas Cahaya',
+                '${avgCahaya.toStringAsFixed(0)} Lux',
+                Icons.light_mode,
+              ),
+              const Divider(height: 20),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.green.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Periode Data',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedTimeFilter == 0
+                          ? 'Hari Ini'
+                          : _selectedTimeFilter == 1
+                          ? 'Bulan Ini'
+                          : 'Tahun Ini',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLaporanItem(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.green.shade700),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadActiveVarietasAndHistory() async {
     setState(() => _isLoading = true);
     try {
@@ -500,10 +649,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                       ],
                     ),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Data Historis Tanaman',
                           style: TextStyle(
                             fontSize: 24,
@@ -511,10 +660,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             color: Colors.white,
                           ),
                         ),
-                        SizedBox(height: 8),
-                        Text(
+                        const SizedBox(height: 8),
+                        const Text(
                           'Pilih data dan rentang waktu untuk ditampilkan',
                           style: TextStyle(fontSize: 14, color: Colors.white70),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: _showLaporanDialog,
+                          icon: const Icon(Icons.assessment, size: 18),
+                          label: const Text('Lihat Laporan'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.green.shade700,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                          ),
                         ),
                       ],
                     ),

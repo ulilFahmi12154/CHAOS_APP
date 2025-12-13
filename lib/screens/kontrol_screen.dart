@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/plant_utils.dart';
 
 class KontrolScreen extends StatefulWidget {
   const KontrolScreen({super.key});
@@ -16,10 +19,96 @@ class _KontrolScreenState extends State<KontrolScreen> {
   String? activeVarietas;
   bool _isTogglingPompa = false; // Track if pompa toggle is in progress
 
+  // Firestore instance
+  final _firestore = FirebaseFirestore.instance;
+  int? waktuTanamMillis;
+
   @override
   void initState() {
     super.initState();
     _loadActiveVarietas();
+    _loadInitialWaktuTanam();
+    _setupWaktuTanamListener();
+  }
+
+  /// Load initial waktu_tanam data once
+  Future<void> _loadInitialWaktuTanam() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('🚫 KONTROL: User is null, cannot load initial data');
+      return;
+    }
+
+    try {
+      print('🔄 KONTROL: Loading initial waktu_tanam for user: ${user.uid}');
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data();
+        print('📊 KONTROL: Initial document data: $data');
+
+        if (data != null && data.containsKey('waktu_tanam')) {
+          final newWaktuTanam = data['waktu_tanam'] as int?;
+          print('✅ KONTROL: Initial waktu_tanam = $newWaktuTanam');
+
+          setState(() {
+            waktuTanamMillis = newWaktuTanam;
+          });
+
+          if (newWaktuTanam != null) {
+            final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
+            print('📅 KONTROL: Initial waktu tanam date: $date');
+          }
+        } else {
+          print('⚠️ KONTROL: No waktu_tanam field in initial load');
+        }
+      }
+    } catch (e) {
+      print('❌ KONTROL: Error loading initial waktu_tanam: $e');
+    }
+  }
+
+  /// Setup real-time listener for waktu_tanam from Firestore
+  void _setupWaktuTanamListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('🚫 KONTROL: User is null, cannot setup listener');
+      return;
+    }
+
+    print('🔄 KONTROL: Setting up waktu_tanam listener for user: ${user.uid}');
+
+    // Listen to real-time changes in waktu_tanam
+    _firestore.collection('users').doc(user.uid).snapshots().listen((doc) {
+      print('📡 KONTROL: Received Firestore snapshot');
+
+      if (mounted && doc.exists) {
+        final data = doc.data();
+        print('📊 KONTROL: Document data: $data');
+
+        if (data != null && data.containsKey('waktu_tanam')) {
+          final newWaktuTanam = data['waktu_tanam'] as int?;
+          print('✅ KONTROL: Found waktu_tanam = $newWaktuTanam');
+
+          setState(() {
+            waktuTanamMillis = newWaktuTanam;
+          });
+
+          if (newWaktuTanam != null) {
+            final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
+            print('📅 KONTROL: Waktu tanam date: $date');
+          }
+        } else {
+          // Field deleted, reset to null
+          print('⚠️ KONTROL: waktu_tanam field not found, setting to null');
+          setState(() {
+            waktuTanamMillis = null;
+          });
+        }
+      } else {
+        print('⚠️ KONTROL: Document does not exist or widget not mounted');
+      }
+    });
   }
 
   Future<void> _loadActiveVarietas() async {
@@ -142,6 +231,10 @@ class _KontrolScreenState extends State<KontrolScreen> {
           _buildHeaderCard(),
           const SizedBox(height: 24),
 
+          // Plant Info Card (umur, fase, progress, pupuk)
+          _buildPlantInfoCard(),
+          const SizedBox(height: 24),
+
           // Mode Control Card
           _buildModeControlCard(),
           const SizedBox(height: 20),
@@ -156,6 +249,263 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
           // Status Dashboard
           _buildStatusDashboard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlantInfoCard() {
+    print(
+      '🏗️ KONTROL: Building PlantInfoCard, waktuTanamMillis = $waktuTanamMillis',
+    );
+
+    if (waktuTanamMillis == null) {
+      print('⚠️ KONTROL: Showing "not set" message');
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.orange.shade100, Colors.orange.shade50],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.settings, color: Colors.orange.shade700, size: 32),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Waktu tanam belum diatur. Silakan atur di halaman Pengaturan untuk memantau fase pertumbuhan',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.orange.shade900,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    print('✅ KONTROL: Showing plant growth details');
+
+    final info = PlantUtils.calculateGrowthInfo(
+      waktuTanamMillis: waktuTanamMillis!,
+      jadwalPupuk: PlantUtils.defaultJadwalPupuk(),
+    );
+    final faseColor = PlantUtils.faseColor(info.fase);
+    final progressPercent = (info.progressPanen * 100)
+        .clamp(0, 100)
+        .toStringAsFixed(0);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [faseColor.withOpacity(0.18), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: faseColor.withOpacity(0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.eco, color: faseColor, size: 32),
+              const SizedBox(width: 12),
+              Text(
+                'Info Tanaman',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: faseColor,
+                  shadows: [
+                    Shadow(
+                      color: faseColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              _build3DProgressBar(info.progressPanen, faseColor),
+              const SizedBox(width: 18),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Umur',
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                  ),
+                  Text(
+                    '${info.umurHari} hari',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: faseColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Fase',
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: faseColor.withOpacity(0.13),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      info.fase,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: faseColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Icon(Icons.emoji_events, color: faseColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Progress Panen: ',
+                style: TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+              Text(
+                '$progressPercent%',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: faseColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (info.jadwalPupukBerikutnya != null)
+            Row(
+              children: [
+                Icon(Icons.local_florist, color: Colors.brown, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Pupuk berikutnya: ',
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                Text(
+                  'Hari ke-${info.jadwalPupukBerikutnya!['hari']} (${info.jadwalPupukBerikutnya!['nama']})',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.brown,
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  'Semua jadwal pupuk selesai',
+                  style: TextStyle(fontSize: 13, color: Colors.green),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _build3DProgressBar(double value, Color color) {
+    return Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [color.withOpacity(0.18), Colors.white],
+          center: Alignment(-0.2, -0.2),
+          radius: 0.9,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: CircularProgressIndicator(
+              value: value.clamp(0.0, 1.0),
+              strokeWidth: 10,
+              backgroundColor: color.withOpacity(0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.10),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(child: Icon(Icons.spa, color: color, size: 28)),
+          ),
         ],
       ),
     );

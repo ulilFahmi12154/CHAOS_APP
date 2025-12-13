@@ -52,6 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   String? _userId;
 
+  // Planting date
+  DateTime? _waktuTanam;
+
   // Asset icon paths to verify and precache
   final List<String> _iconAssets = [
     'assets/ikon/cabai.png',
@@ -120,6 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _initializeData() async {
     await _loadVarietasList();
     await _loadUserSettings();
+    await _loadPlantingDate();
   }
 
   /// Load list varietas dari Firestore
@@ -136,6 +140,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       // ignore: avoid_print
       print('Error loading varietas list: $e');
+    }
+  }
+
+  /// Load planting date from Firestore
+  Future<void> _loadPlantingDate() async {
+    if (_userId == null) return;
+
+    try {
+      final doc = await _firestore.collection('users').doc(_userId).get();
+      if (doc.exists && mounted) {
+        final data = doc.data();
+        final waktuTanamMs = data?['waktu_tanam'] as int?;
+        if (waktuTanamMs != null) {
+          setState(() {
+            _waktuTanam = DateTime.fromMillisecondsSinceEpoch(waktuTanamMs);
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading planting date: $e');
+    }
+  }
+
+  /// Show date picker and save planting date
+  Future<void> _showPlantingDatePicker() async {
+    if (_userId == null) return;
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _waktuTanam ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: const Color(0xFF2E7D32),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      try {
+        // Save to Firestore
+        await _firestore.collection('users').doc(_userId).update({
+          'waktu_tanam': picked.millisecondsSinceEpoch,
+        });
+
+        setState(() {
+          _waktuTanam = picked;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Waktu tanam berhasil disimpan'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Gagal menyimpan: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -440,7 +521,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           setState(() {
             _selectedVarietas = ''; // Kosongkan, sama seperti di Dashboard
+            _waktuTanam = null; // Reset waktu tanam juga
           });
+
+          // Hapus waktu_tanam dari Firestore
+          if (_userId != null) {
+            _firestore
+                .collection('users')
+                .doc(_userId)
+                .update({'waktu_tanam': FieldValue.delete()})
+                .catchError((e) {
+                  print('Error deleting waktu_tanam: $e');
+                });
+          }
         } else {
           // Varietas berubah
           final newVarietas = event.snapshot.value.toString();
@@ -938,6 +1031,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Waktu Tanam Card
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              color: const Color(0xFF2D5F40),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Waktu Tanam',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: _selectedVarietas.isEmpty
+                          ? null
+                          : _showPlantingDatePicker,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: _selectedVarietas.isEmpty
+                              ? Colors.grey.shade300
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: _selectedVarietas.isEmpty
+                            ? Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Colors.grey.shade600,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Pilih varietas terlebih dahulu',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontStyle: FontStyle.italic,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _waktuTanam == null
+                                            ? 'Belum diatur'
+                                            : '${_waktuTanam!.day}/${_waktuTanam!.month}/${_waktuTanam!.year}',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: _waktuTanam == null
+                                              ? Colors.grey.shade600
+                                              : const Color(0xFF2E7D32),
+                                        ),
+                                      ),
+                                      if (_waktuTanam != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${DateTime.now().difference(_waktuTanam!).inDays + 1} hari yang lalu',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  Icon(
+                                    Icons.edit_calendar,
+                                    color: const Color(0xFF2E7D32),
+                                    size: 24,
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                    if (_selectedVarietas.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Atur waktu tanam untuk melacak umur dan fase tanaman',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white70,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
