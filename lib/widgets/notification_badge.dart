@@ -111,7 +111,11 @@ class NotificationBadgeStream extends StatelessWidget {
 
     // Listen untuk warnings dari 7 hari terakhir
     await for (final event
-        in db.child('smartfarm/warning/$userVarietas').onValue) {
+        in db.child('smartfarm/warning/$userVarietas').onValue.handleError((
+          error,
+        ) {
+          debugPrint('⚠️ [NOTIFICATION] Error accessing warnings: $error');
+        })) {
       if (event.snapshot.value == null) {
         yield 0;
         continue;

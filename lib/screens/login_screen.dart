@@ -24,12 +24,22 @@ class _LoginScreenState extends State<LoginScreen> {
   void _login() async {
     setState(() => loading = true);
     try {
-      await auth.login(emailCtrl.text.trim(), passCtrl.text.trim());
+      debugPrint(
+        '🔵 [LOGIN] Starting login with email: ${emailCtrl.text.trim()}',
+      );
+      final user = await auth.login(
+        emailCtrl.text.trim(),
+        passCtrl.text.trim(),
+      );
+      debugPrint('🟢 [LOGIN] Login successful, user: ${user?.uid}');
+
       // clear any previous login error on success
       setState(() => _loginError = null);
       if (mounted) {
+        debugPrint('🟡 [LOGIN] Mounted check passed, checking tour status...');
         // Check if user has seen the app tour from Firestore
         final userId = FirebaseAuth.instance.currentUser?.uid;
+        debugPrint('🟡 [LOGIN] Current user ID: $userId');
         bool showTour = false;
 
         if (userId != null) {
@@ -37,13 +47,26 @@ class _LoginScreenState extends State<LoginScreen> {
               .collection('users')
               .doc(userId)
               .get();
+          debugPrint('🟡 [LOGIN] User doc retrieved: ${userDoc.exists}');
 
-          // Tour muncul jika field 'tourCompleted' belum ada atau bernilai false
-          final tourCompleted = userDoc.data()?['tourCompleted'] ?? false;
+          // Validate Firestore data structure
+          final data = userDoc.data();
+          if (data == null || data is! Map<String, dynamic>) {
+            throw Exception('Invalid Firestore data structure');
+          }
+
+          // Ensure tourCompleted is a boolean
+          final tourCompleted = data['tourCompleted'] is bool
+              ? data['tourCompleted'] as bool
+              : false;
           showTour = !tourCompleted;
+          debugPrint(
+            '🟡 [LOGIN] Show tour: $showTour, tourCompleted: $tourCompleted',
+          );
         }
 
         // Always go to MainNavigationScreen
+        debugPrint('🟠 [LOGIN] Navigating to MainNavigationScreen...');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -51,9 +74,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 MainNavigationScreen(initialIndex: 2, showTour: showTour),
           ),
         );
+        debugPrint('✅ [LOGIN] Navigation completed');
       }
     } catch (e) {
       // On login failure, show a single centered alert below the password field
+      debugPrint('🔴 [LOGIN] Login error: $e');
       setState(() {
         _loginError = 'Login Gagal, Username atau Password Anda Salah';
       });

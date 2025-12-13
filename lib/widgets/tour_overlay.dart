@@ -41,17 +41,17 @@ final List<TourStep> appTourSteps = [
     position: TourPosition.bottom,
   ),
   TourStep(
+    targetKey: 'laporan_button',
+    title: 'Laporan',
+    description:
+        'Lihat analisis data dan laporan lengkap tentang pertanian Anda. Fitur ini membantu Anda memahami pola dan tren dari data sensor.',
+    position: TourPosition.bottom,
+  ),
+  TourStep(
     targetKey: 'settings_button',
     title: 'Pengaturan',
     description:
         'Pilih varietas cabai aktif dan atur ambang batas (suhu, kelembapan udara/tanah, pH, intensitas cahaya) untuk setiap varietas.',
-    position: TourPosition.bottom,
-  ),
-  TourStep(
-    targetKey: 'profile_button',
-    title: 'Profile & Akun',
-    description:
-        'Kelola informasi akun Anda, ubah kata sandi, upload foto profil, dan logout dari aplikasi.',
     position: TourPosition.bottom,
   ),
 ];

@@ -115,15 +115,16 @@ class _MyAppState extends State<MyApp> {
         '/home': (context) => const MainNavigationScreen(initialIndex: 2),
         '/kontrol': (context) => const MainNavigationScreen(initialIndex: 0),
         '/history': (context) => const MainNavigationScreen(initialIndex: 1),
-        '/settings': (context) => const MainNavigationScreen(initialIndex: 3),
-        '/profile': (context) => const MainNavigationScreen(initialIndex: 4),
+        '/laporan': (context) => const MainNavigationScreen(initialIndex: 3),
+        '/settings': (context) => const MainNavigationScreen(initialIndex: 4),
+        '/profile': (context) => const MainNavigationScreen(initialIndex: 5),
         '/welcome': (context) => const WelcomeScreen(),
         '/rekomendasi-pupuk': (context) => const RekomendasiPupukPage(),
         '/nutrient-recommendation': (context) =>
             const NutrientRecommendationScreen(),
         '/intro': (context) => const IntroSlidesScreen(),
         // Route alias: always open notifications within MainNavigationScreen
-        '/notifikasi': (context) => const MainNavigationScreen(initialIndex: 5),
+        '/notifikasi': (context) => const MainNavigationScreen(initialIndex: 6),
       },
     );
   }
