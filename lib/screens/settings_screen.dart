@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/realtime_db_service.dart';
+import '../services/phase_threshold_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -206,6 +207,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               duration: Duration(seconds: 2),
             ),
           );
+
+          // Auto-sync threshold fase ke RTDB setelah waktu tanam diubah
+          _syncThresholdPhase();
         }
       } catch (e) {
         if (mounted) {
@@ -216,6 +220,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  /// Auto-sync threshold fase ke RTDB
+  Future<void> _syncThresholdPhase() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🔄 Menyinkronkan threshold fase ke Wokwi...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      await PhaseThresholdSyncService.forceSync();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Threshold fase berhasil disinkronkan!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Sync warning: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
     }
   }
@@ -1153,6 +1190,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: Colors.white70,
                             fontStyle: FontStyle.italic,
                           ),
+                        ),
+                      ),
+
+                    // Info auto-sync
+                    if (_waktuTanam != null && _selectedVarietas.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.sync, size: 12, color: Colors.white70),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Threshold NPK otomatis disesuaikan dengan fase pertumbuhan',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white70,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],

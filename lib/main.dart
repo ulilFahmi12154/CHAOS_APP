@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:app_links/app_links.dart'; // 🔹 Ganti dari uni_links
 import 'dart:async';
 import 'firebase_options.dart';
@@ -11,6 +12,7 @@ import 'screens/rekomendasi_pupuk_screen.dart';
 import 'screens/nutrient_recommendation_screen.dart';
 import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'services/phase_threshold_sync_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -43,6 +45,20 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initDeepLinks();
+    _initPhaseSync();
+  }
+
+  // Auto-start phase threshold sync service saat user login
+  void _initPhaseSync() {
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        // User login, start sync service
+        PhaseThresholdSyncService.startSync();
+      } else {
+        // User logout, stop sync service
+        PhaseThresholdSyncService.stopSync();
+      }
+    });
   }
 
   void _initDeepLinks() async {

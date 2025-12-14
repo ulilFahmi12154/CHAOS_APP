@@ -1066,11 +1066,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return _buildEmptyPlantCard();
@@ -1703,11 +1703,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return const SizedBox.shrink();
@@ -1721,14 +1721,118 @@ class _HomeScreenState extends State<HomeScreen> {
         final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
         final umurHari = DateTime.now().difference(tanamDate).inDays + 1;
 
+        // Tentukan fase berdasarkan umur tanaman
+        String fase = '';
+        if (umurHari <= 30) {
+          fase = 'Vegetatif';
+        } else if (umurHari <= 60) {
+          fase = 'Generatif';
+        } else if (umurHari <= 70) {
+          fase = 'Pembungaan';
+        } else if (umurHari <= 90) {
+          fase = 'Pembuahan';
+        } else {
+          fase = 'Siap Panen';
+        }
+
+        // Jadwal pupuk DINAMIS berdasarkan fase pertumbuhan
         final jadwalPupuk = [
-          {'hari': 7, 'task': 'NPK Fertilizer 1', 'type': 'Fertilizing'},
-          {'hari': 14, 'task': 'NPK Fertilizer 2', 'type': 'Fertilizing'},
-          {'hari': 21, 'task': 'NPK Fertilizer 3', 'type': 'Fertilizing'},
-          {'hari': 30, 'task': 'Organic Fertilizer', 'type': 'Fertilizing'},
-          {'hari': 45, 'task': 'NPK Fertilizer 4', 'type': 'Fertilizing'},
-          {'hari': 60, 'task': 'Foliar Fertilizer', 'type': 'Fertilizing'},
-          {'hari': 91, 'task': 'Harvest Time', 'type': 'Harvesting'},
+          // FASE VEGETATIF (Hari 1-30) - Fokus Nitrogen tinggi
+          {
+            'hari': 7,
+            'task': 'Pupuk Urea (N tinggi)',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {
+            'hari': 14,
+            'task': 'NPK 20-10-10',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {
+            'hari': 21,
+            'task': 'Pupuk Organik + Urea',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {'hari': 28, 'task': 'NPK 25-5-5', 'type': 'Vegetatif', 'icon': '🌱'},
+
+          // FASE GENERATIF (Hari 31-60) - NPK Seimbang
+          {
+            'hari': 35,
+            'task': 'NPK 15-15-15 (Seimbang)',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 42,
+            'task': 'TSP/SP-36 (Fosfor)',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 49,
+            'task': 'NPK 16-16-16',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 56,
+            'task': 'Pupuk Organik Cair',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+
+          // FASE PEMBUNGAAN (Hari 61-70) - P & K tinggi
+          {
+            'hari': 63,
+            'task': 'NPK 10-20-20 (P & K tinggi)',
+            'type': 'Pembungaan',
+            'icon': '🌸',
+          },
+          {
+            'hari': 67,
+            'task': 'Pupuk Daun + KCl',
+            'type': 'Pembungaan',
+            'icon': '🌸',
+          },
+
+          // FASE PEMBUAHAN (Hari 71-90) - K sangat tinggi
+          {
+            'hari': 73,
+            'task': 'NPK 10-10-30 (K tinggi)',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 77,
+            'task': 'KCl + Kalsium',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 82,
+            'task': 'Pupuk Organik Cair',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 87,
+            'task': 'NPK 8-12-32',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+
+          // FASE SIAP PANEN (Hari 90+) - Pemeliharaan minimal
+          {'hari': 92, 'task': 'Panen Perdana', 'type': 'Panen', 'icon': '🎉'},
+          {
+            'hari': 95,
+            'task': 'NPK Pemeliharaan 10-10-10',
+            'type': 'Panen',
+            'icon': '🎉',
+          },
+          {'hari': 100, 'task': 'Panen Berkala', 'type': 'Panen', 'icon': '🎉'},
         ];
 
         final upcomingTasks = jadwalPupuk
@@ -1763,11 +1867,33 @@ class _HomeScreenState extends State<HomeScreen> {
               final hari = task['hari'] as int;
               final taskName = task['task'] as String;
               final taskType = task['type'] as String;
+              final taskIcon = task['icon'] as String;
               final daysLeft = hari - umurHari;
 
-              Color badgeColor = Colors.green;
-              if (taskType == 'Harvesting') badgeColor = Colors.red;
-              if (daysLeft <= 3) badgeColor = Colors.orange;
+              // Warna badge sesuai fase
+              Color badgeColor;
+              switch (taskType) {
+                case 'Vegetatif':
+                  badgeColor = Colors.green;
+                  break;
+                case 'Generatif':
+                  badgeColor = Colors.blue;
+                  break;
+                case 'Pembungaan':
+                  badgeColor = Colors.purple;
+                  break;
+                case 'Pembuahan':
+                  badgeColor = Colors.orange;
+                  break;
+                case 'Panen':
+                  badgeColor = Colors.red;
+                  break;
+                default:
+                  badgeColor = Colors.grey;
+              }
+
+              // Urgent jika tinggal 3 hari atau kurang
+              if (daysLeft <= 3) badgeColor = Colors.red.shade700;
 
               return InkWell(
                 onTap: () {
@@ -1821,31 +1947,45 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              taskName,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  taskIcon,
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    taskName,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Row(
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
-                                    vertical: 2,
+                                    vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: badgeColor.withOpacity(0.1),
+                                    color: badgeColor.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: badgeColor.withOpacity(0.3),
+                                    ),
                                   ),
                                   child: Text(
-                                    taskType,
+                                    'Fase $taskType',
                                     style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 10,
                                       color: badgeColor,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),

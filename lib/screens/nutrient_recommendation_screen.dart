@@ -3,6 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/notification_badge.dart';
+import '../services/npk_phases_seeder.dart';
 import 'main_navigation_screen.dart';
 
 class NutrientRecommendationScreen extends StatefulWidget {
@@ -31,6 +32,11 @@ class _NutrientRecommendationScreenState
   // Display name for currently selected varietas (compact header)
   String displayVarietas = 'Dewata F1';
 
+  // Plant age tracking
+  int? waktuTanam;
+  int umurHari = 0;
+  String fase = '';
+
   // Threshold defaults
   double nitrogenMin = 0, nitrogenMax = 4095;
   double phosphorusMin = 0, phosphorusMax = 4095;
@@ -43,6 +49,231 @@ class _NutrientRecommendationScreenState
     super.initState();
     _loadActiveVarietas();
     _loadVarietasConfig();
+    _loadPlantAge();
+    _seedNPKDataIfNeeded(); // Auto-upload jika belum ada
+  }
+
+  // Auto-seed NPK phases data jika belum ada di Firestore
+  Future<void> _seedNPKDataIfNeeded() async {
+    try {
+      await NPKPhasesSeeder.seedDataIfNeeded();
+    } catch (e) {
+      print('Error auto-seeding NPK data: $e');
+    }
+  }
+
+  // Load plant age from Firestore
+  Future<void> _loadPlantAge() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final data = snapshot.data();
+            final wt = data?['waktu_tanam'] as int?;
+
+            if (wt != null) {
+              final tanamDate = DateTime.fromMillisecondsSinceEpoch(wt);
+              final uh = DateTime.now().difference(tanamDate).inDays + 1;
+
+              String f = '';
+              if (uh <= 30) {
+                f = 'Vegetatif';
+              } else if (uh <= 60) {
+                f = 'Generatif';
+              } else if (uh <= 70) {
+                f = 'Pembungaan';
+              } else if (uh <= 90) {
+                f = 'Pembuahan';
+              } else {
+                f = 'Siap Panen';
+              }
+
+              setState(() {
+                waktuTanam = wt;
+                umurHari = uh;
+                fase = f;
+              });
+
+              // Load threshold from Firestore for this phase
+              _loadDynamicNPKThreshold();
+            }
+          }
+        });
+  }
+
+  // Load NPK threshold from Firestore (varietas + phase specific)
+  Future<void> _loadDynamicNPKThreshold() async {
+    if (fase.isEmpty || activeVarietas == null || activeVarietas!.isEmpty) {
+      return;
+    }
+
+    try {
+      final varietasKey = _normalizeToKey(activeVarietas!);
+
+      // Try to load from Firestore: varietas_config/{varietas}/phases/{fase}
+      final phaseDoc = await FirebaseFirestore.instance
+          .collection('varietas_config')
+          .doc(varietasKey)
+          .collection('phases')
+          .doc(fase.toLowerCase())
+          .get();
+
+      if (phaseDoc.exists && mounted) {
+        final data = phaseDoc.data()!;
+        setState(() {
+          nitrogenMin = (data['nitrogen_min'] ?? nitrogenMin).toDouble();
+          nitrogenMax = (data['nitrogen_max'] ?? nitrogenMax).toDouble();
+          phosphorusMin = (data['phosphorus_min'] ?? phosphorusMin).toDouble();
+          phosphorusMax = (data['phosphorus_max'] ?? phosphorusMax).toDouble();
+          potassiumMin = (data['potassium_min'] ?? potassiumMin).toDouble();
+          potassiumMax = (data['potassium_max'] ?? potassiumMax).toDouble();
+        });
+        print('✅ Loaded NPK threshold for $varietasKey - $fase from Firestore');
+      } else {
+        print('⚠️ No Firestore data for $varietasKey - $fase');
+      }
+    } catch (e) {
+      print('❌ Error loading dynamic NPK threshold: $e');
+    }
+  }
+
+  // Get fertilizer recommendation based on growth phase
+  Map<String, dynamic> _getPhaseBasedRecommendation() {
+    if (fase.isEmpty) {
+      return {
+        'title': 'Belum Ada Data Tanam',
+        'description': 'Atur waktu tanam di halaman Pengaturan',
+        'npkRatio': 'Belum tersedia',
+        'dosage': '-',
+        'frequency': '-',
+        'tips': [],
+      };
+    }
+
+    Map<String, dynamic> recommendation;
+
+    switch (fase) {
+      case 'Vegetatif':
+        recommendation = {
+          'title': 'Fase Vegetatif (Hari 1-30)',
+          'description':
+              'Fokus pada pertumbuhan daun dan batang. Butuh nitrogen tinggi untuk fotosintesis optimal.',
+          'npkRatio': 'NPK 20-10-10 atau 25-5-5',
+          'dosage': '15-20 gram per tanaman',
+          'frequency': '2x seminggu (setiap 3-4 hari)',
+          'tips': [
+            'Prioritaskan pupuk tinggi Nitrogen (N)',
+            'Aplikasi di pagi hari (06:00-08:00)',
+            'Larutkan dalam air, siram merata di sekitar batang',
+            'Kombinasi dengan pupuk organik cair untuk hasil maksimal',
+            'Monitor daun: harus hijau segar dan tumbuh aktif',
+          ],
+          'icon': Icons.grass,
+          'color': Colors.green,
+        };
+        break;
+
+      case 'Generatif':
+        recommendation = {
+          'title': 'Fase Generatif (Hari 31-60)',
+          'description':
+              'Transisi ke pembentukan bunga. Butuh fosfor dan kalium lebih tinggi untuk inisiasi bunga.',
+          'npkRatio': 'NPK 15-15-15 atau 16-16-16',
+          'dosage': '15-20 gram per tanaman',
+          'frequency': '2x seminggu (setiap 3-4 hari)',
+          'tips': [
+            'Gunakan NPK seimbang untuk transisi fase',
+            'Tambahkan pupuk Fosfor (TSP/SP-36) 10 gram per tanaman',
+            'Aplikasi di sore hari (16:00-18:00)',
+            'Pastikan kelembaban tanah terjaga',
+            'Mulai perhatikan tanda-tanda munculnya kuncup bunga',
+          ],
+          'icon': Icons.spa,
+          'color': Colors.blue,
+        };
+        break;
+
+      case 'Pembungaan':
+        recommendation = {
+          'title': 'Fase Pembungaan (Hari 61-70)',
+          'description':
+              'Pembentukan bunga aktif. Butuh fosfor tinggi dan kalium untuk kualitas bunga optimal.',
+          'npkRatio': 'NPK 10-20-20 atau 12-24-12',
+          'dosage': '12-15 gram per tanaman',
+          'frequency': '2x seminggu (setiap 3-4 hari)',
+          'tips': [
+            'Tingkatkan Fosfor (P) untuk pembentukan bunga',
+            'Tambahkan Kalium (K) untuk kekuatan tangkai bunga',
+            'Aplikasi pupuk daun untuk hasil cepat',
+            'Kurangi Nitrogen agar tidak pertumbuhan vegetatif berlebih',
+            'Jaga kelembaban stabil, hindari stress air',
+            'Monitor hama thrips dan kutu daun pada bunga',
+          ],
+          'icon': Icons.local_florist,
+          'color': Colors.purple,
+        };
+        break;
+
+      case 'Pembuahan':
+        recommendation = {
+          'title': 'Fase Pembuahan (Hari 71-90)',
+          'description':
+              'Pembentukan dan pematangan buah. Butuh kalium tinggi untuk ukuran dan kualitas buah optimal.',
+          'npkRatio': 'NPK 10-10-30 atau 8-12-32',
+          'dosage': '12-15 gram per tanaman',
+          'frequency': '2x seminggu (setiap 3-4 hari)',
+          'tips': [
+            'Prioritaskan Kalium (K) untuk pembesaran buah',
+            'Tambahkan KCl atau KNO3 10 gram per tanaman',
+            'Aplikasi pupuk organik cair untuk kualitas rasa',
+            'Pastikan penyiraman teratur dan merata',
+            'Tambahkan Kalsium (Ca) untuk mencegah buah busuk ujung',
+            'Monitor warna buah: hijau → merah seiring pematangan',
+          ],
+          'icon': Icons.energy_savings_leaf,
+          'color': Colors.orange,
+        };
+        break;
+
+      case 'Siap Panen':
+        recommendation = {
+          'title': 'Fase Siap Panen (Hari 90+)',
+          'description':
+              'Tanaman siap panen. Kurangi pemupukan, fokus pada pemanenan bertahap.',
+          'npkRatio': 'NPK Pemeliharaan 10-10-10',
+          'dosage': '8-10 gram per tanaman',
+          'frequency': '1x seminggu (pemeliharaan)',
+          'tips': [
+            'Kurangi dosis pupuk untuk pemeliharaan saja',
+            'Fokus pada panen bertahap (setiap 2-3 hari)',
+            'Panen cabai yang sudah merah 80-100%',
+            'Jaga kebersihan area panen dari hama/penyakit',
+            'Siapkan untuk siklus tanam baru setelah panen selesai',
+          ],
+          'icon': Icons.agriculture,
+          'color': Colors.red,
+        };
+        break;
+
+      default:
+        recommendation = {
+          'title': 'Fase Tidak Diketahui',
+          'description': 'Gunakan NPK standar seimbang',
+          'npkRatio': 'NPK 16-16-16',
+          'dosage': '15 gram per tanaman',
+          'frequency': '2x seminggu',
+          'tips': ['Gunakan pupuk NPK seimbang standar'],
+          'icon': Icons.eco,
+          'color': Colors.grey,
+        };
+    }
+
+    return recommendation;
   }
 
   Future<void> _loadActiveVarietas() async {
@@ -63,6 +294,7 @@ class _NutrientRecommendationScreenState
           displayVarietas = found;
         });
         _loadVarietasConfig();
+        _loadDynamicNPKThreshold(); // Load threshold when varietas changes
       }
     });
   }
@@ -305,22 +537,62 @@ class _NutrientRecommendationScreenState
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.blue.shade200),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info, color: Colors.blue.shade700),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Rekomendasi berdasarkan nilai sensor NPK dan EC/TDS real-time.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade900,
+                  Row(
+                    children: [
+                      Icon(Icons.info, color: Colors.blue.shade700),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Rekomendasi berdasarkan nilai sensor NPK dan EC/TDS real-time.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (fase.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.science,
+                            color: Colors.blue.shade700,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '🎯 Threshold NPK otomatis menyesuaikan fase $fase (${umurHari} hari) untuk hasil optimal',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(height: 20),
+
+            // Phase-Based Fertilizer Recommendation Card
+            _buildPhaseRecommendationCard(),
             const SizedBox(height: 20),
 
             // Varietas header removed (integrated with dashboard)
@@ -487,9 +759,45 @@ class _NutrientRecommendationScreenState
             const SizedBox(height: 24),
 
             // NPK Section
-            const Text(
-              'Nutrisi Utama (NPK)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Nutrisi Utama (NPK)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                if (fase.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Threshold disesuaikan fase $fase',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
 
@@ -1551,6 +1859,285 @@ class _NutrientRecommendationScreenState
   }
 
   // Varietas header removed interactive picker: integration with dashboard used
+
+  Widget _buildPhaseRecommendationCard() {
+    final recommendation = _getPhaseBasedRecommendation();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            (recommendation['color'] as Color).withOpacity(0.15),
+            (recommendation['color'] as Color).withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: (recommendation['color'] as Color).withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header dengan icon fase
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: recommendation['color'] as Color,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  recommendation['icon'] as IconData,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Rekomendasi Pupuk',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      recommendation['title'] as String,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: recommendation['color'] as Color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Umur tanaman
+          if (umurHari > 0) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today,
+                    size: 16,
+                    color: recommendation['color'] as Color,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Umur Tanaman: $umurHari hari',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Description
+          Text(
+            recommendation['description'] as String,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // NPK Ratio Card
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.science,
+                      color: recommendation['color'] as Color,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Formula Pupuk',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  recommendation['npkRatio'] as String,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: recommendation['color'] as Color,
+                  ),
+                ),
+                const Divider(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Dosis',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            recommendation['dosage'] as String,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 30,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Frekuensi',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            recommendation['frequency'] as String,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Tips Section
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.tips_and_updates,
+                      color: Colors.amber.shade700,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Tips Aplikasi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...(recommendation['tips'] as List<String>).map((tip) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade700,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            tip,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildTipItem(String title, String description) {
     return Column(
