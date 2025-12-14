@@ -18,11 +18,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final TransformationController _zoomController = TransformationController();
   StreamSubscription<DatabaseEvent>? _historySubscription;
   StreamSubscription<DatabaseEvent>? _activeVarietasSubscription;
+  final GlobalKey _sensorDropdownKey = GlobalKey();
 
   // Tab selections
   int _selectedDataType =
       0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara, 4: pH Tanah
-  int _selectedTimeFilter = 0; // 0: Hari Ini, 1: Bulan Ini, 2: Tahun Ini
+  DateTime? _selectedDate; // Tanggal yang dipilih untuk menampilkan data
 
   List<Map<String, dynamic>> _historyData = [];
   bool _isLoading = true;
@@ -48,6 +49,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _activeVarietasSubscription?.cancel();
     _zoomController.dispose();
     super.dispose();
+  }
+
+  Future<void> _showDatePicker() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.green,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _calculateStats();
+      });
+    }
   }
 
   Future<void> _showLaporanDialog() async {
@@ -159,11 +187,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _selectedTimeFilter == 0
-                          ? 'Hari Ini'
-                          : _selectedTimeFilter == 1
-                          ? 'Bulan Ini'
-                          : 'Tahun Ini',
+                      DateFormat(
+                        'dd MMMM yyyy',
+                      ).format(_selectedDate ?? DateTime.now()),
                       style: const TextStyle(fontSize: 11),
                     ),
                   ],
@@ -357,7 +383,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 DateTime? dateFromKey;
                 try {
                   dateFromKey = DateFormat('yyyy-MM-dd').parse(dateKey);
-                } catch (_) {}
+                } catch (e) {
+                  print('Error parsing date $dateKey: $e');
+                }
 
                 final parsedTs = toMillis(timeValue['timestamp']);
                 final effectiveTs =
@@ -398,9 +426,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   List<Map<String, dynamic>> _getFilteredData() {
-    final now = DateTime.now();
-
-    // Filter berdasarkan varietas pilihan user TERLEBIH DAHULU
+    // Filter hanya untuk varietas yang dipilih user
     List<Map<String, dynamic>> base = _historyData;
     if (_activeVarietas != null && _activeVarietas!.isNotEmpty) {
       base = base
@@ -408,33 +434,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
           .toList();
     }
 
-    // Lalu filter berdasarkan waktu
-    if (_selectedTimeFilter == 0) {
-      // Hari Ini: 24 jam terakhir (lebih praktis untuk melihat data terbaru)
-      final cutoff = now
-          .subtract(const Duration(hours: 24))
-          .millisecondsSinceEpoch;
-      return base.where((item) {
-        final ts = item['timestamp'] as int;
-        return ts >= cutoff;
-      }).toList();
+    // Jika belum ada tanggal yang dipilih, gunakan tanggal data terbaru
+    if (_selectedDate == null && base.isNotEmpty) {
+      // Ambil tanggal dari data terbaru
+      final latestTimestamp = base.last['timestamp'] as int;
+      _selectedDate = DateTime.fromMillisecondsSinceEpoch(latestTimestamp);
     }
 
-    if (_selectedTimeFilter == 1) {
-      return base.where((item) {
-        final ts = item['timestamp'] as int;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        return dt.year == now.year && dt.month == now.month;
-      }).toList();
-    }
-    if (_selectedTimeFilter == 2) {
-      return base.where((item) {
-        final ts = item['timestamp'] as int;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        return dt.year == now.year;
-      }).toList();
-    }
-    return [];
+    // Jika masih null, gunakan hari ini
+    _selectedDate ??= DateTime.now();
+
+    // Filter data untuk tanggal yang dipilih (00:00:00 sampai 23:59:59)
+    final startOfDay = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      0,
+      0,
+      0,
+    ).millisecondsSinceEpoch;
+
+    final endOfDay = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      23,
+      59,
+      59,
+      999,
+    ).millisecondsSinceEpoch;
+
+    return base.where((item) {
+      final ts = item['timestamp'] as int;
+      return ts >= startOfDay && ts <= endOfDay;
+    }).toList();
   }
 
   void _calculateStats() {
@@ -527,94 +560,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
         dataKey = 'kelembaban_tanah';
     }
 
-    // Grouping disesuaikan dengan filter waktu:
-    // - Hari ini -> 1 data per jam (grouping per jam)
-    // - Bulan ini -> 1 data per hari (grouping per hari)
-    // - Tahun ini -> tampilkan semua data
-    Map<int, List<double>> buckets = {};
+    final spots =
+        filteredData
+            .map((item) {
+              final ts = item['timestamp'] as int;
+              final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+              final v = item[dataKey];
+              if (v == null) return null;
+              final y = (v is int) ? v.toDouble() : (v as double);
+              final x = dt.hour + (dt.minute / 60.0);
+              return FlSpot(x, y);
+            })
+            .whereType<FlSpot>()
+            .toList()
+          ..sort((a, b) => a.x.compareTo(b.x));
 
-    // Untuk "Hari Ini", grouping per jam (1 data per jam)
-    if (_selectedTimeFilter == 0) {
-      // Group by hour
-      for (var item in filteredData) {
-        int ts = item['timestamp'] as int;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        int hourKey = dt.hour; // 0..23
-
-        final v = item[dataKey];
-        final doubleValue = (v is int) ? v.toDouble() : (v as double);
-
-        buckets.putIfAbsent(hourKey, () => []);
-        buckets[hourKey]!.add(doubleValue);
-      }
-
-      // Rata-rata tiap jam -> FlSpot
-      final spots = buckets.entries.map((e) {
-        final avg = e.value.reduce((a, b) => a + b) / e.value.length;
-        return FlSpot(e.key.toDouble(), avg);
-      }).toList()..sort((a, b) => a.x.compareTo(b.x));
-
-      // Update axis untuk hari ini
-      _minX = 0;
-      _maxX = 23;
-      _bottomInterval = 4; // Tampilkan: 0, 4, 8, 12, 16, 20
-
-      return spots;
-    }
-
-    // Untuk "Bulan Ini", grouping per hari (1 data per hari)
-    if (_selectedTimeFilter == 1) {
-      // Group by day
-      for (var item in filteredData) {
-        int ts = item['timestamp'] as int;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-        int dayKey = dt.day; // 1..31
-
-        final v = item[dataKey];
-        final doubleValue = (v is int) ? v.toDouble() : (v as double);
-
-        buckets.putIfAbsent(dayKey, () => []);
-        buckets[dayKey]!.add(doubleValue);
-      }
-
-      // Rata-rata tiap hari -> FlSpot
-      final spots = buckets.entries.map((e) {
-        final avg = e.value.reduce((a, b) => a + b) / e.value.length;
-        return FlSpot(e.key.toDouble(), avg);
-      }).toList()..sort((a, b) => a.x.compareTo(b.x));
-
-      // Update axis untuk bulan ini
-      _minX = 1;
-      _maxX = 30;
-      _bottomInterval = 6; // Tampilkan: 1, 6, 12, 18, 24, 30
-
-      return spots;
-    }
-
-    // Untuk "Tahun Ini", grouping per bulan (1 data per bulan)
-    // Group by month
-    for (var item in filteredData) {
-      int ts = item['timestamp'] as int;
-      final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-      int monthKey = dt.month; // 1..12
-
-      final v = item[dataKey];
-      final doubleValue = (v is int) ? v.toDouble() : (v as double);
-
-      buckets.putIfAbsent(monthKey, () => []);
-      buckets[monthKey]!.add(doubleValue);
-    }
-
-    // Rata-rata tiap bulan -> FlSpot
-    final spots = buckets.entries.map((e) {
-      final avg = e.value.reduce((a, b) => a + b) / e.value.length;
-      return FlSpot(e.key.toDouble(), avg);
-    }).toList()..sort((a, b) => a.x.compareTo(b.x));
-
-    // Update axis untuk Tahun Ini
-    _minX = 1;
-    _maxX = 12;
-    _bottomInterval = 1; // Tampilkan semua bulan: 1-12
+    // Update axis untuk tampilan per jam (0-23)
+    _minX = 0;
+    _maxX = 23;
+    _bottomInterval = 4; // Tampilkan: 0, 4, 8, 12, 16, 20
 
     return spots;
   }
@@ -662,22 +626,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Pilih data dan rentang waktu untuk ditampilkan',
+                          'Pilih sensor dan tanggal untuk ditampilkan',
                           style: TextStyle(fontSize: 14, color: Colors.white70),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: _showLaporanDialog,
-                          icon: const Icon(Icons.assessment, size: 18),
-                          label: const Text('Lihat Laporan'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.green.shade700,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -688,63 +638,68 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 // Data Type Dropdown
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF2D5F40),
-                        width: 1.5,
+                  child: InkWell(
+                    key: _sensorDropdownKey,
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () async {
+                      final selected = await _showSensorMenu(context);
+                      if (selected != null) {
+                        setState(() {
+                          _selectedDataType = selected;
+                          _calculateStats();
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.green.shade50,
+                            Colors.green.shade100.withOpacity(0.5),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      ],
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: _selectedDataType,
-                        isExpanded: true,
-                        icon: const Icon(
-                          Icons.arrow_drop_down,
-                          color: Color(0xFF2D5F40),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.green.shade300,
+                          width: 2,
                         ),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2D5F40),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 0,
-                            child: Text('Kelembapan Tanah'),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.green.withOpacity(0.1),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                          DropdownMenuItem(value: 1, child: Text('Suhu Udara')),
-                          DropdownMenuItem(
-                            value: 2,
-                            child: Text('Intensitas Cahaya'),
-                          ),
-                          DropdownMenuItem(
-                            value: 3,
-                            child: Text('Kelembapan Udara'),
-                          ),
-                          DropdownMenuItem(value: 4, child: Text('pH Tanah')),
                         ],
-                        onChanged: (int? newValue) {
-                          if (newValue != null) {
-                            setState(() {
-                              _selectedDataType = newValue;
-                              _calculateStats();
-                            });
-                          }
-                        },
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _buildSelectedItem(
+                              _selectedDataType,
+                              _getSensorIcon(_selectedDataType),
+                              _getSensorColor(_selectedDataType),
+                              _getSensorLabel(_selectedDataType),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Colors.green.shade800,
+                              size: 24,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -752,10 +707,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 const SizedBox(height: 16),
 
-                // Time Filter Choice Chips (Hari Ini / Bulan Ini / Tahun Ini)
+                // Date Selector
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildTimeFilterChips(),
+                  child: _buildDateSelector(),
                 ),
 
                 const SizedBox(height: 24),
@@ -860,53 +815,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
   }
 
-  Widget _buildTimeFilterChips() {
-    final labels = const ['Hari Ini', 'Bulan Ini', 'Tahun Ini'];
-    return Row(
-      children: List.generate(labels.length, (i) {
-        final selected = _selectedTimeFilter == i;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: i == 0 ? 0 : 4,
-              right: i == labels.length - 1 ? 0 : 4,
+  Widget _buildDateSelector() {
+    return InkWell(
+      onTap: _showDatePicker,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today, color: Colors.green.shade700, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              DateFormat(
+                'dd MMMM yyyy',
+              ).format(_selectedDate ?? DateTime.now()),
+              style: TextStyle(
+                color: Colors.green.shade700,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
-            child: ChoiceChip(
-              label: SizedBox(
-                width: double.infinity,
-                child: Text(
-                  labels[i],
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                    color: selected ? Colors.white : Colors.black87,
-                  ),
-                ),
-              ),
-              selected: selected,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              backgroundColor: Colors.white,
-              selectedColor: const Color(0xFF2D5F40),
-              side: BorderSide(
-                color: selected
-                    ? const Color(0xFF2D5F40)
-                    : Colors.grey.shade300,
-              ),
-              onSelected: (_) {
-                setState(() {
-                  _selectedTimeFilter = i;
-                  _calculateStats();
-                });
-              },
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-            ),
-          ),
-        );
-      }),
+            const SizedBox(width: 4),
+            Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1101,31 +1040,220 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   String _bottomTitle(double x) {
     final xi = x.round();
-    switch (_selectedTimeFilter) {
+    // Menampilkan format jam (00:00, 04:00, dst)
+    return '${xi.toString().padLeft(2, '0')}:00';
+  }
+
+  Future<int?> _showSensorMenu(BuildContext context) async {
+    final RenderBox button =
+        _sensorDropdownKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final Offset buttonTopLeft = button.localToGlobal(
+      Offset.zero,
+      ancestor: overlay,
+    );
+    final Offset buttonBottomLeft = button.localToGlobal(
+      Offset(0, button.size.height),
+      ancestor: overlay,
+    );
+
+    // Position menu tepat di bawah field dengan margin yang sama
+    final RelativeRect position = RelativeRect.fromLTRB(
+      buttonTopLeft.dx,
+      buttonBottomLeft.dy + 4,
+      overlay.size.width - buttonTopLeft.dx - button.size.width,
+      overlay.size.height - buttonBottomLeft.dy - 4,
+    );
+
+    // Data sensor options
+    final List<Map<String, dynamic>> sensorOptions = [
+      {
+        'value': 0,
+        'icon': Icons.water_drop,
+        'color': Colors.brown,
+        'label': 'Kelembapan Tanah',
+      },
+      {
+        'value': 1,
+        'icon': Icons.thermostat,
+        'color': Colors.orange,
+        'label': 'Suhu Udara',
+      },
+      {
+        'value': 2,
+        'icon': Icons.wb_sunny,
+        'color': Colors.yellow.shade700,
+        'label': 'Intensitas Cahaya',
+      },
+      {
+        'value': 3,
+        'icon': Icons.air,
+        'color': Colors.blue,
+        'label': 'Kelembapan Udara',
+      },
+      {
+        'value': 4,
+        'icon': Icons.science,
+        'color': Colors.purple,
+        'label': 'pH Tanah',
+      },
+    ];
+
+    final result = await showMenu<int>(
+      context: context,
+      position: position,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.white,
+      constraints: BoxConstraints(
+        minWidth: button.size.width,
+        maxWidth: button.size.width,
+      ),
+      items: sensorOptions.map((sensor) {
+        final bool isSelected = sensor['value'] == _selectedDataType;
+        return PopupMenuItem<int>(
+          value: sensor['value'],
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.green.shade50 : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: isSelected
+                  ? Border.all(color: Colors.green.shade200, width: 1)
+                  : null,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: (sensor['color'] as Color).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    sensor['icon'],
+                    color: isSelected
+                        ? Colors.green.shade700
+                        : (sensor['color'] as Color).withOpacity(0.8),
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    sensor['label'],
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.green.shade800
+                          : Colors.black87,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle,
+                    size: 18,
+                    color: Colors.green.shade700,
+                  ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+
+    return result;
+  }
+
+  IconData _getSensorIcon(int type) {
+    switch (type) {
       case 0:
-        return '$xi:00';
+        return Icons.water_drop;
       case 1:
-        return xi.toString();
+        return Icons.thermostat;
       case 2:
-        const months = [
-          '',
-          'Jan',
-          'Feb',
-          'Mar',
-          'Apr',
-          'Mei',
-          'Jun',
-          'Jul',
-          'Agu',
-          'Sep',
-          'Okt',
-          'Nov',
-          'Des',
-        ];
-        if (xi >= 1 && xi <= 12) return months[xi];
-        return xi.toString();
+        return Icons.wb_sunny;
+      case 3:
+        return Icons.air;
+      case 4:
+        return Icons.science;
       default:
-        return xi.toString();
+        return Icons.water_drop;
     }
+  }
+
+  Color _getSensorColor(int type) {
+    switch (type) {
+      case 0:
+        return Colors.brown;
+      case 1:
+        return Colors.orange;
+      case 2:
+        return Colors.yellow.shade700;
+      case 3:
+        return Colors.blue;
+      case 4:
+        return Colors.purple;
+      default:
+        return Colors.brown;
+    }
+  }
+
+  String _getSensorLabel(int type) {
+    switch (type) {
+      case 0:
+        return 'Kelembapan Tanah';
+      case 1:
+        return 'Suhu Udara';
+      case 2:
+        return 'Intensitas Cahaya';
+      case 3:
+        return 'Kelembapan Udara';
+      case 4:
+        return 'pH Tanah';
+      default:
+        return 'Kelembapan Tanah';
+    }
+  }
+
+  Widget _buildSelectedItem(
+    int value,
+    IconData icon,
+    Color color,
+    String label,
+  ) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color.withOpacity(0.8), size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.green.shade900,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
