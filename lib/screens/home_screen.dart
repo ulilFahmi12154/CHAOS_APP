@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/realtime_db_service.dart';
 import 'package:chaos_app/screens/plant_detail_screen.dart';
 import 'package:chaos_app/screens/warning_detail_screen.dart';
+import 'package:chaos_app/screens/main_navigation_screen.dart';
 
 Widget _buildSensorCard(
   String title,
@@ -1856,7 +1857,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/nutrient-recommendation');
+                    // Navigate ke History screen tab Jadwal Pupuk
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MainNavigationScreen(
+                          initialIndex: 1, // History screen
+                          historyTabIndex: 1, // Tab Jadwal Pupuk
+                        ),
+                      ),
+                    );
                   },
                   child: const Text('See All'),
                 ),
@@ -1898,7 +1908,14 @@ class _HomeScreenState extends State<HomeScreen> {
               return InkWell(
                 onTap: () {
                   // Navigate to nutrient recommendation for fertilizer tasks
-                  Navigator.pushNamed(context, '/nutrient-recommendation');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MainNavigationScreen(
+                        initialIndex: 7, // Nutrient Recommendation
+                      ),
+                    ),
+                  );
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
@@ -3000,7 +3017,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () {
         if (title.toLowerCase().contains('pupuk')) {
-          Navigator.pushNamed(context, '/nutrient-recommendation');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MainNavigationScreen(
+                initialIndex: 7, // Nutrient Recommendation
+              ),
+            ),
+          );
         } else if (title.toLowerCase().contains('tanaman')) {
           Navigator.push(
             context,
@@ -3064,7 +3088,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () {
                 if (title.toLowerCase().contains('pupuk')) {
-                  Navigator.pushNamed(context, '/nutrient-recommendation');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MainNavigationScreen(
+                        initialIndex: 7, // Nutrient Recommendation
+                      ),
+                    ),
+                  );
                 } else if (title.toLowerCase().contains('tanaman')) {
                   Navigator.push(
                     context,

@@ -8,6 +8,7 @@ import 'settings_screen.dart';
 import 'profile_screen.dart';
 import 'notifikasi_screen.dart';
 import 'report_screen.dart';
+import 'nutrient_recommendation_screen.dart';
 import '../widgets/tour_overlay.dart';
 import '../widgets/notification_badge.dart';
 
@@ -16,11 +17,14 @@ import '../widgets/notification_badge.dart';
 class MainNavigationScreen extends StatefulWidget {
   final int initialIndex;
   final bool showTour;
+  final int?
+  historyTabIndex; // Tab index untuk HistoryScreen (0=Data Sensor, 1=Jadwal Pupuk)
 
   const MainNavigationScreen({
     super.key,
     this.initialIndex = 2, // Default ke Dashboard
     this.showTour = false,
+    this.historyTabIndex,
   });
 
   @override
@@ -47,14 +51,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // List semua screen dengan index yang jelas
   // Bottom Nav (0-4): Kontrol, Histori, Dashboard, Laporan, Pengaturan
   // Header (5-6): Profile, Notifikasi
+  // Additional (7): Nutrient Recommendation
   List<Widget> get _screens => [
     const KontrolScreen(), // 0 - Bottom Nav (Kontrol)
-    const HistoryScreen(), // 1 - Bottom Nav (Histori)
+    HistoryScreen(
+      initialTabIndex: widget.historyTabIndex ?? 0,
+    ), // 1 - Bottom Nav (Histori)
     const HomeScreen(), // 2 - Bottom Nav (Dashboard)
     const ReportScreen(), // 3 - Bottom Nav (Laporan) ⚠️
     const SettingsScreen(), // 4 - Bottom Nav (Pengaturan) ⚠️
     const ProfileScreen(), // 5 - Header Left (Profile) ⚠️
     const NotifikasiScreen(), // 6 - Header Right (Notifikasi) ⚠️
+    const NutrientRecommendationScreen(), // 7 - Nutrient Recommendation
   ];
 
   bool _hasProcessedArgs = false;

@@ -3,16 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final int initialTabIndex;
+
+  const HistoryScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   String? _activeVarietas;
   final TransformationController _zoomController = TransformationController();
@@ -23,7 +28,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // Tab selections
   int _selectedDataType =
       0; // 0: Kelembapan Tanah, 1: Suhu Udara, 2: Intensitas Cahaya, 3: Kelembapan Udara, 4: pH Tanah
-  DateTime? _selectedDate; // Tanggal yang dipilih untuk menampilkan data
+  DateTime? _startDate; // Tanggal mulai untuk range
+  DateTime? _endDate; // Tanggal akhir untuk range
+  String _dateFilterType = '1month'; // '1month', '1year', 'custom'
 
   List<Map<String, dynamic>> _historyData = [];
   bool _isLoading = true;
@@ -40,28 +47,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTabIndex,
+    );
+    // Set default date range to last 1 month
+    _endDate = DateTime.now();
+    _startDate = DateTime.now().subtract(const Duration(days: 30));
     _loadActiveVarietasAndHistory();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _historySubscription?.cancel();
     _activeVarietasSubscription?.cancel();
     _zoomController.dispose();
     super.dispose();
   }
 
-  Future<void> _showDatePicker() async {
-    final DateTime? picked = await showDatePicker(
+  Future<void> _showDateRangePicker() async {
+    final DateTimeRange? picked = await showDateRangePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Colors.green,
+              primary: Color(0xFF2E7D32),
               onPrimary: Colors.white,
               onSurface: Colors.black,
             ),
@@ -70,12 +88,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
         );
       },
     );
-    if (picked != null && picked != _selectedDate) {
+    if (picked != null) {
       setState(() {
-        _selectedDate = picked;
+        _startDate = picked.start;
+        _endDate = picked.end;
+        _dateFilterType = 'custom';
         _calculateStats();
       });
     }
+  }
+
+  void _setDateFilter(String filterType) {
+    setState(() {
+      _dateFilterType = filterType;
+      _endDate = DateTime.now();
+
+      switch (filterType) {
+        case '1month':
+          _startDate = DateTime.now().subtract(const Duration(days: 30));
+          break;
+        case '1year':
+          _startDate = DateTime.now().subtract(const Duration(days: 365));
+          break;
+        case 'custom':
+          _showDateRangePicker();
+          return;
+      }
+      _calculateStats();
+    });
   }
 
   Future<void> _showLaporanDialog() async {
@@ -187,9 +227,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      DateFormat(
-                        'dd MMMM yyyy',
-                      ).format(_selectedDate ?? DateTime.now()),
+                      '${DateFormat('dd MMM yyyy').format(_startDate ?? DateTime.now())} - ${DateFormat('dd MMM yyyy').format(_endDate ?? DateTime.now())}',
                       style: const TextStyle(fontSize: 11),
                     ),
                   ],
@@ -434,30 +472,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
           .toList();
     }
 
-    // Jika belum ada tanggal yang dipilih, gunakan tanggal data terbaru
-    if (_selectedDate == null && base.isNotEmpty) {
-      // Ambil tanggal dari data terbaru
-      final latestTimestamp = base.last['timestamp'] as int;
-      _selectedDate = DateTime.fromMillisecondsSinceEpoch(latestTimestamp);
+    // Jika belum ada date range, set default
+    if (_startDate == null || _endDate == null) {
+      _endDate = DateTime.now();
+      _startDate = DateTime.now().subtract(const Duration(days: 30));
     }
 
-    // Jika masih null, gunakan hari ini
-    _selectedDate ??= DateTime.now();
-
-    // Filter data untuk tanggal yang dipilih (00:00:00 sampai 23:59:59)
-    final startOfDay = DateTime(
-      _selectedDate!.year,
-      _selectedDate!.month,
-      _selectedDate!.day,
+    // Filter data untuk range tanggal yang dipilih
+    final startOfRange = DateTime(
+      _startDate!.year,
+      _startDate!.month,
+      _startDate!.day,
       0,
       0,
       0,
     ).millisecondsSinceEpoch;
 
-    final endOfDay = DateTime(
-      _selectedDate!.year,
-      _selectedDate!.month,
-      _selectedDate!.day,
+    final endOfRange = DateTime(
+      _endDate!.year,
+      _endDate!.month,
+      _endDate!.day,
       23,
       59,
       59,
@@ -466,7 +500,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return base.where((item) {
       final ts = item['timestamp'] as int;
-      return ts >= startOfDay && ts <= endOfDay;
+      return ts >= startOfRange && ts <= endOfRange;
     }).toList();
   }
 
@@ -585,30 +619,189 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFE8F5E9),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Elegant Header Section
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF1B5E20),
+                    const Color(0xFF2E7D32),
+                    const Color(0xFF4CAF50),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2E7D32).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.history,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Riwayat',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Data sensor & jadwal pemupukan',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.auto_graph,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Custom Tab Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicator: BoxDecoration(
+                    color: const Color(0xFF2E7D32),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.grey.shade600,
+                  labelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  tabs: const [
+                    Tab(
+                      height: 48,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.show_chart, size: 20),
+                          SizedBox(width: 8),
+                          Text('Data Sensor'),
+                        ],
+                      ),
+                    ),
+                    Tab(
+                      height: 48,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.event_note, size: 20),
+                          SizedBox(width: 8),
+                          Text('Jadwal Pupuk'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildSensorHistoryTab(),
+                  _buildFertilizerScheduleTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSensorHistoryTab() {
     return _isLoading
         ? const Center(child: CircularProgressIndicator(color: Colors.green))
         : SingleChildScrollView(
             child: Column(
               children: [
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
 
-                // Header shape (match Kontrol style)
+                // Data Type Dropdown - Modern Design
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.green.shade700, Colors.green.shade500],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
                           offset: const Offset(0, 2),
                         ),
                       ],
@@ -616,104 +809,126 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Data Historis Tanaman',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.sensors,
+                                size: 18,
+                                color: Colors.grey.shade700,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Pilih Sensor',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade600,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Pilih sensor dan tanggal untuk ditampilkan',
-                          style: TextStyle(fontSize: 14, color: Colors.white70),
+                        InkWell(
+                          key: _sensorDropdownKey,
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(16),
+                            bottomRight: Radius.circular(16),
+                          ),
+                          onTap: () async {
+                            final selected = await _showSensorMenu(context);
+                            if (selected != null) {
+                              setState(() {
+                                _selectedDataType = selected;
+                                _calculateStats();
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _getSensorColor(
+                                _selectedDataType,
+                              ).withOpacity(0.08),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(16),
+                                bottomRight: Radius.circular(16),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: _getSensorColor(
+                                      _selectedDataType,
+                                    ).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    _getSensorIcon(_selectedDataType),
+                                    color: _getSensorColor(_selectedDataType),
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _getSensorLabel(_selectedDataType),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade800,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: Colors.grey.shade600,
+                                  size: 24,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
 
-                // Data Type Dropdown
+                const SizedBox(height: 12),
+
+                // Quick Filter Buttons
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: InkWell(
-                    key: _sensorDropdownKey,
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () async {
-                      final selected = await _showSensorMenu(context);
-                      if (selected != null) {
-                        setState(() {
-                          _selectedDataType = selected;
-                          _calculateStats();
-                        });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildQuickFilterButton('1 Bulan', '1month'),
                       ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.green.shade50,
-                            Colors.green.shade100.withOpacity(0.5),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.green.shade300,
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.green.withOpacity(0.1),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildQuickFilterButton('1 Tahun', '1year'),
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _buildSelectedItem(
-                              _selectedDataType,
-                              _getSensorIcon(_selectedDataType),
-                              _getSensorColor(_selectedDataType),
-                              _getSensorLabel(_selectedDataType),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade200,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: Colors.green.shade800,
-                              size: 24,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildQuickFilterButton('Custom', 'custom'),
                       ),
-                    ),
+                    ],
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Date Selector
+                // Date Range Display
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildDateSelector(),
+                  child: _buildDateRangeDisplay(),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
                 // Chart Container
                 Padding(
@@ -815,34 +1030,102 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
   }
 
-  Widget _buildDateSelector() {
+  Widget _buildQuickFilterButton(String label, String filterType) {
+    final isActive = _dateFilterType == filterType;
     return InkWell(
-      onTap: _showDatePicker,
+      onTap: () => _setDateFilter(filterType),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.green.shade50,
+          color: isActive ? const Color(0xFF2E7D32) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.shade200),
+          border: Border.all(
+            color: isActive ? const Color(0xFF2E7D32) : Colors.grey.shade300,
+            width: isActive ? 2 : 1,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF2E7D32).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [],
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isActive ? Colors.white : Colors.grey.shade700,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateRangeDisplay() {
+    if (_startDate == null || _endDate == null) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: _showDateRangePicker,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today, color: Colors.green.shade700, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              DateFormat(
-                'dd MMMM yyyy',
-              ).format(_selectedDate ?? DateTime.now()),
-              style: TextStyle(
-                color: Colors.green.shade700,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.date_range,
+                color: Color(0xFF2E7D32),
+                size: 22,
               ),
             ),
-            const SizedBox(width: 4),
-            Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Periode Data',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${DateFormat('dd MMM yyyy').format(_startDate!)} - ${DateFormat('dd MMM yyyy').format(_endDate!)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.edit_calendar, color: Colors.grey.shade400, size: 20),
           ],
         ),
       ),
@@ -1254,6 +1537,581 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // Tab Jadwal Pupuk
+  Widget _buildFertilizerScheduleTab() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const Center(child: Text('Please login'));
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Center(child: Text('Belum ada data tanam'));
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final waktuTanam = data?['waktu_tanam'] as int?;
+
+        if (waktuTanam == null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 80,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Belum ada waktu tanam',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Atur waktu tanam di Pengaturan',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
+        final umurHari = DateTime.now().difference(tanamDate).inDays + 1;
+
+        // Jadwal pupuk lengkap
+        final allTasks = [
+          // FASE VEGETATIF (Hari 1-30)
+          {
+            'hari': 7,
+            'task': 'Pupuk Urea (N tinggi)',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {
+            'hari': 14,
+            'task': 'NPK 20-10-10',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {
+            'hari': 21,
+            'task': 'Pupuk Organik + Urea',
+            'type': 'Vegetatif',
+            'icon': '🌱',
+          },
+          {'hari': 28, 'task': 'NPK 25-5-5', 'type': 'Vegetatif', 'icon': '🌱'},
+
+          // FASE GENERATIF (Hari 31-60)
+          {
+            'hari': 35,
+            'task': 'NPK 15-15-15 (Seimbang)',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 42,
+            'task': 'TSP/SP-36 (Fosfor)',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 49,
+            'task': 'NPK 16-16-16',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+          {
+            'hari': 56,
+            'task': 'Pupuk Organik Cair',
+            'type': 'Generatif',
+            'icon': '🌿',
+          },
+
+          // FASE PEMBUNGAAN (Hari 61-70)
+          {
+            'hari': 63,
+            'task': 'NPK 10-20-20 (P & K tinggi)',
+            'type': 'Pembungaan',
+            'icon': '🌸',
+          },
+          {
+            'hari': 67,
+            'task': 'Pupuk Daun + KCl',
+            'type': 'Pembungaan',
+            'icon': '🌸',
+          },
+
+          // FASE PEMBUAHAN (Hari 71-90)
+          {
+            'hari': 73,
+            'task': 'NPK 10-10-30 (K tinggi)',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 77,
+            'task': 'KCl + Kalsium',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 82,
+            'task': 'Pupuk Organik Cair',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+          {
+            'hari': 87,
+            'task': 'NPK 8-12-32',
+            'type': 'Pembuahan',
+            'icon': '🌶',
+          },
+
+          // FASE SIAP PANEN (Hari 90+)
+          {'hari': 92, 'task': 'Panen Perdana', 'type': 'Panen', 'icon': '🎉'},
+          {
+            'hari': 95,
+            'task': 'NPK Pemeliharaan 10-10-10',
+            'type': 'Panen',
+            'icon': '🎉',
+          },
+          {'hari': 100, 'task': 'Panen Berkala', 'type': 'Panen', 'icon': '🎉'},
+        ];
+
+        // Pisahkan completed dan upcoming
+        final completedTasks = allTasks
+            .where((task) => umurHari > (task['hari'] as int))
+            .toList();
+
+        final upcomingTasks = allTasks
+            .where((task) => umurHari <= (task['hari'] as int))
+            .toList();
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Info Card - Compact
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF2E7D32), const Color(0xFF4CAF50)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.eco,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$umurHari',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'Hari',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Ditanam ${tanamDate.day}/${tanamDate.month}/${tanamDate.year}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Upcoming Tasks Section
+              if (upcomingTasks.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E7D32),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.schedule,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Jadwal Mendatang',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2E7D32),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E7D32),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${upcomingTasks.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...upcomingTasks.map(
+                  (task) => _buildFertilizerTaskCard(
+                    task,
+                    umurHari,
+                    isCompleted: false,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              // Completed Tasks Section
+              if (completedTasks.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade500,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.check_circle_outline,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Riwayat Terlaksana',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade500,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${completedTasks.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...completedTasks.reversed.map(
+                  (task) => _buildFertilizerTaskCard(
+                    task,
+                    umurHari,
+                    isCompleted: true,
+                  ),
+                ),
+              ],
+
+              if (completedTasks.isEmpty && upcomingTasks.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      'Belum ada jadwal pemupukan',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFertilizerTaskCard(
+    Map<String, dynamic> task,
+    int umurHari, {
+    required bool isCompleted,
+  }) {
+    final hari = task['hari'] as int;
+    final taskName = task['task'] as String;
+    final taskType = task['type'] as String;
+    final taskIcon = task['icon'] as String;
+    final daysLeft = hari - umurHari;
+
+    // Warna untuk completed vs upcoming
+    Color badgeColor;
+    if (isCompleted) {
+      badgeColor = Colors.grey.shade500;
+    } else {
+      switch (taskType) {
+        case 'Vegetatif':
+          badgeColor = Colors.green;
+          break;
+        case 'Generatif':
+          badgeColor = Colors.blue;
+          break;
+        case 'Pembungaan':
+          badgeColor = Colors.purple;
+          break;
+        case 'Pembuahan':
+          badgeColor = Colors.orange;
+          break;
+        case 'Panen':
+          badgeColor = Colors.red;
+          break;
+        default:
+          badgeColor = Colors.grey;
+      }
+
+      if (daysLeft <= 3) badgeColor = Colors.red.shade700;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isCompleted ? Colors.grey.shade100 : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCompleted ? Colors.grey.shade300 : Colors.transparent,
+        ),
+        boxShadow: isCompleted
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: badgeColor.withOpacity(isCompleted ? 0.3 : 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isCompleted) ...[
+                  Icon(Icons.check_circle, color: badgeColor, size: 24),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Done',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: badgeColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ] else ...[
+                  Text(
+                    '${daysLeft > 0 ? daysLeft : 0}',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: badgeColor,
+                    ),
+                  ),
+                  Text(
+                    'days',
+                    style: TextStyle(fontSize: 10, color: badgeColor),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      taskIcon,
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: isCompleted ? Colors.grey : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        taskName,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isCompleted
+                              ? Colors.grey.shade700
+                              : Colors.black,
+                          decoration: isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: badgeColor.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        'Fase $taskType',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: badgeColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Day $hari',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isCompleted
+                            ? Colors.grey.shade500
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

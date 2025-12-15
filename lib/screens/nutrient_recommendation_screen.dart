@@ -3,7 +3,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/notification_badge.dart';
-import '../services/npk_phases_seeder.dart';
 import 'main_navigation_screen.dart';
 
 class NutrientRecommendationScreen extends StatefulWidget {
@@ -50,16 +49,6 @@ class _NutrientRecommendationScreenState
     _loadActiveVarietas();
     _loadVarietasConfig();
     _loadPlantAge();
-    _seedNPKDataIfNeeded(); // Auto-upload jika belum ada
-  }
-
-  // Auto-seed NPK phases data jika belum ada di Firestore
-  Future<void> _seedNPKDataIfNeeded() async {
-    try {
-      await NPKPhasesSeeder.seedDataIfNeeded();
-    } catch (e) {
-      print('Error auto-seeding NPK data: $e');
-    }
   }
 
   // Load plant age from Firestore
@@ -485,762 +474,620 @@ class _NutrientRecommendationScreenState
         ? 'dewata_f1'
         : _normalizeToKey(activeVarietas!);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFE8F5E9),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1B5E20),
-        elevation: 0,
-        centerTitle: false,
-        automaticallyImplyLeading: false,
-        toolbarHeight: 80,
-        leadingWidth: 120,
-        leading: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Image.asset(
-            'assets/images/logo.png',
-            height: 90,
-            fit: BoxFit.contain,
-            errorBuilder: (c, e, s) =>
-                const Icon(Icons.eco, color: Colors.white),
-          ),
-        ),
-        title: const SizedBox.shrink(),
-        actions: [
-          NotificationBadgeStream(
-            child: const Icon(
-              Icons.notifications_outlined,
-              color: Colors.white,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info Card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
             ),
-            onTap: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => const MainNavigationScreen(initialIndex: 5),
-                  settings: const RouteSettings(
-                    arguments: {'initialIndex': 5, 'lastIndex': 2},
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Info Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.info, color: Colors.blue.shade700),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Rekomendasi berdasarkan nilai sensor NPK dan EC/TDS real-time.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.shade900,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (fase.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.science,
-                            color: Colors.blue.shade700,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '🎯 Threshold NPK otomatis menyesuaikan fase $fase (${umurHari} hari) untuk hasil optimal',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.blue.shade800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Phase-Based Fertilizer Recommendation Card
-            _buildPhaseRecommendationCard(),
-            const SizedBox(height: 20),
-
-            // Varietas header removed (integrated with dashboard)
-
-            // EC/TDS Section (moved to top)
-            const Text(
-              'Konduktivitas Elektrik & Nutrisi Terlarut',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-
-            // EC/TDS Card with condition summary
-            StreamBuilder<DatabaseEvent>(
-              stream: db.child('smartfarm/sensors/$varietasToUse').onValue,
-              builder: (context, snapshot) {
-                double ec = 0;
-
-                if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
-                  final data =
-                      snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
-                  ec = (data['ec'] is num)
-                      ? (data['ec'] as num).toDouble()
-                      : 0.0;
-                }
-
-                final ecStatus = _getNutrientStatus(ec, ecMin, ecMax);
-
-                // Determine EC condition
-                String ecCondition;
-                String ecAdvice;
-                Color ecConditionColor;
-                Color ecTextColor;
-                IconData ecConditionIcon;
-
-                if (ecStatus == 'Normal') {
-                  ecCondition = 'Konsentrasi Nutrisi Ideal';
-                  ecAdvice = 'Larutan nutrisi dalam kondisi optimal';
-                  ecConditionColor = const Color(0xFF4CAF50); // Green 500
-                  ecTextColor = const Color(0xFF2E7D32); // Green 800
-                  ecConditionIcon = Icons.check_circle;
-                } else if (ecStatus == 'Kekurangan') {
-                  ecCondition = 'Konsentrasi Nutrisi Rendah';
-                  ecAdvice = 'Tambahkan larutan nutrisi hidroponik';
-                  ecConditionColor = const Color(0xFFE53935); // Red 600
-                  ecTextColor = const Color(0xFFC62828); // Red 800
-                  ecConditionIcon = Icons.error;
-                } else {
-                  ecCondition = 'Konsentrasi Nutrisi Tinggi';
-                  ecAdvice = 'Encerkan larutan atau ganti dengan air bersih';
-                  ecConditionColor = Colors.orange.shade700;
-                  ecTextColor = Colors.orange.shade900;
-                  ecConditionIcon = Icons.warning;
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // EC condition summary card
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: ecConditionColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: ecConditionColor.withOpacity(0.4),
-                          width: 2,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                ecConditionIcon,
-                                color: ecTextColor,
-                                size: 28,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Kondisi Larutan Nutrisi',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade800,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      ecCondition,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: ecTextColor,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'EC/TDS: $ecStatus',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.grey.shade700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: ecConditionColor.withOpacity(0.3),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.lightbulb_outline,
-                                  color: ecTextColor,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    ecAdvice,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: ecTextColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // EC nutrient card
-                    _buildNutrientCard(
-                      'EC/TDS (Nutrisi Terlarut)',
-                      ec,
-                      ecMin,
-                      ecMax,
-                      'Total nutrisi yang tersedia di dalam larutan',
-                      _getNutrientColor(ec, ecMin, ecMax),
-                      ecStatus,
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // NPK Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Nutrisi Utama (NPK)',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                if (fase.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                Row(
+                  children: [
+                    Icon(Icons.info, color: Colors.blue.shade700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Rekomendasi berdasarkan nilai sensor NPK dan EC/TDS real-time.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+                if (fase.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.blue.shade200),
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.info_outline,
-                          size: 14,
+                          Icons.science,
                           color: Colors.blue.shade700,
+                          size: 16,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Threshold disesuaikan fase $fase',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.blue.shade700,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🎯 Threshold NPK otomatis menyesuaikan fase $fase (${umurHari} hari) untuk hasil optimal',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue.shade800,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                ],
               ],
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: 20),
 
-            // Combined NPK StreamBuilder with plant condition summary
-            StreamBuilder<DatabaseEvent>(
-              stream: db.child('smartfarm/sensors/$varietasToUse').onValue,
-              builder: (context, snapshot) {
-                // Parse sensor values
-                double nitrogen = 0, phosphorus = 0, potassium = 0;
+          // Phase-Based Fertilizer Recommendation Card
+          _buildPhaseRecommendationCard(),
+          const SizedBox(height: 20),
 
-                if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
-                  final data =
-                      snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
-                  nitrogen = (data['nitrogen'] is num)
-                      ? (data['nitrogen'] as num).toDouble()
-                      : 0.0;
-                  phosphorus = (data['phosphorus'] is num)
-                      ? (data['phosphorus'] as num).toDouble()
-                      : 0.0;
-                  potassium = (data['potassium'] is num)
-                      ? (data['potassium'] as num).toDouble()
-                      : 0.0;
-                }
+          // Varietas header removed (integrated with dashboard)
 
-                // Calculate status for each nutrient
-                final nStatus = _getNutrientStatus(
-                  nitrogen,
-                  nitrogenMin,
-                  nitrogenMax,
-                );
-                final pStatus = _getNutrientStatus(
-                  phosphorus,
-                  phosphorusMin,
-                  phosphorusMax,
-                );
-                final kStatus = _getNutrientStatus(
-                  potassium,
-                  potassiumMin,
-                  potassiumMax,
-                );
+          // EC/TDS Section (moved to top)
+          const Text(
+            'Konduktivitas Elektrik & Nutrisi Terlarut',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
 
-                // Determine overall plant condition with detailed scenarios
-                String plantCondition;
-                String plantAdvice;
-                Color conditionColor;
-                IconData conditionIcon;
+          // EC/TDS Card with condition summary
+          StreamBuilder<DatabaseEvent>(
+            stream: db.child('smartfarm/sensors/$varietasToUse').onValue,
+            builder: (context, snapshot) {
+              double ec = 0;
 
-                final normalCount = [
-                  nStatus,
-                  pStatus,
-                  kStatus,
-                ].where((s) => s == 'Normal').length;
-                final kekuranganCount = [
-                  nStatus,
-                  pStatus,
-                  kStatus,
-                ].where((s) => s == 'Kekurangan').length;
-                final berlebihCount = [
-                  nStatus,
-                  pStatus,
-                  kStatus,
-                ].where((s) => s == 'Berlebih').length;
+              if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+                final data =
+                    snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                ec = (data['ec'] is num) ? (data['ec'] as num).toDouble() : 0.0;
+              }
 
-                // Detailed condition analysis based on NPK combination
-                Color conditionTextColor;
+              final ecStatus = _getNutrientStatus(ec, ecMin, ecMax);
 
-                if (normalCount == 3) {
-                  plantCondition = 'Tanaman Sehat & Optimal';
-                  plantAdvice = 'Pertahankan kondisi nutrisi saat ini';
-                  conditionColor = const Color(0xFF4CAF50); // Green 500
-                  conditionTextColor = const Color(0xFF2E7D32); // Green 800
-                  conditionIcon = Icons.check_circle;
-                } else if (kekuranganCount == 3) {
-                  plantCondition = 'Nutrisi Sangat Kurang';
-                  plantAdvice = 'Segera lakukan pemupukan NPK lengkap';
-                  conditionColor = const Color(0xFFE53935); // Red 600
-                  conditionTextColor = const Color(0xFFC62828); // Red 800
-                  conditionIcon = Icons.error;
-                } else if (berlebihCount == 3) {
-                  plantCondition = 'Nutrisi Berlebihan';
-                  plantAdvice = 'Hentikan pemupukan, tingkatkan penyiraman';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning;
-                } else if (nStatus == 'Kekurangan' &&
-                    pStatus == 'Normal' &&
-                    kStatus == 'Normal') {
-                  plantCondition = 'Kurang Nitrogen (N)';
-                  plantAdvice = 'Daun menguning - tambah pupuk Urea/N';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning_amber;
-                } else if (pStatus == 'Kekurangan' &&
-                    nStatus == 'Normal' &&
-                    kStatus == 'Normal') {
-                  plantCondition = 'Kurang Fosfor (P)';
-                  plantAdvice = 'Pertumbuhan lambat - tambah pupuk TSP/P';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning_amber;
-                } else if (kStatus == 'Kekurangan' &&
-                    nStatus == 'Normal' &&
-                    pStatus == 'Normal') {
-                  plantCondition = 'Kurang Kalium (K)';
-                  plantAdvice = 'Batang lemah - tambah pupuk KCl/K';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning_amber;
-                } else if (nStatus == 'Kekurangan' && pStatus == 'Kekurangan') {
-                  plantCondition = 'Kurang N & P';
-                  plantAdvice = 'Pertumbuhan terhambat - perlu NPK';
-                  conditionColor = const Color(0xFFE53935); // Red 600
-                  conditionTextColor = const Color(0xFFC62828); // Red 800
-                  conditionIcon = Icons.error_outline;
-                } else if (nStatus == 'Kekurangan' && kStatus == 'Kekurangan') {
-                  plantCondition = 'Kurang N & K';
-                  plantAdvice = 'Tanaman lemah - perlu pupuk N & K';
-                  conditionColor = const Color(0xFFE53935); // Red 600
-                  conditionTextColor = const Color(0xFFC62828); // Red 800
-                  conditionIcon = Icons.error_outline;
-                } else if (pStatus == 'Kekurangan' && kStatus == 'Kekurangan') {
-                  plantCondition = 'Kurang P & K';
-                  plantAdvice = 'Akar & batang lemah - perlu P & K';
-                  conditionColor = const Color(0xFFE53935); // Red 600
-                  conditionTextColor = const Color(0xFFC62828); // Red 800
-                  conditionIcon = Icons.error_outline;
-                } else if (nStatus == 'Berlebih') {
-                  plantCondition = 'Nitrogen Berlebih';
-                  plantAdvice = 'Risiko pertumbuhan vegetatif berlebih';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning;
-                } else if (pStatus == 'Berlebih') {
-                  plantCondition = 'Fosfor Berlebih';
-                  plantAdvice = 'Dapat menghambat unsur mikro lain';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning;
-                } else if (kStatus == 'Berlebih') {
-                  plantCondition = 'Kalium Berlebih';
-                  plantAdvice = 'Dapat mengganggu penyerapan Mg & Ca';
-                  conditionColor = Colors.orange.shade700;
-                  conditionTextColor = Colors.orange.shade900;
-                  conditionIcon = Icons.warning;
-                } else if (normalCount >= 2) {
-                  plantCondition = 'Tanaman Cukup Baik';
-                  plantAdvice = 'Perlu sedikit penyesuaian nutrisi';
-                  conditionColor = const Color(0xFF66BB6A); // Light Green 400
-                  conditionTextColor = const Color(0xFF388E3C); // Green 700
-                  conditionIcon = Icons.check_circle_outline;
-                } else {
-                  plantCondition = 'Nutrisi Tidak Seimbang';
-                  plantAdvice = 'Evaluasi dan sesuaikan pemupukan';
-                  conditionColor = const Color(0xFFFFCA28); // Amber 400
-                  conditionTextColor = const Color(0xFFF57F17); // Yellow 900
-                  conditionIcon = Icons.warning_amber;
-                }
+              // Determine EC condition
+              String ecCondition;
+              String ecAdvice;
+              Color ecConditionColor;
+              Color ecTextColor;
+              IconData ecConditionIcon;
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Plant condition summary card
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: conditionColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: conditionColor.withOpacity(0.5),
-                          width: 2.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: conditionColor.withOpacity(0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+              if (ecStatus == 'Normal') {
+                ecCondition = 'Konsentrasi Nutrisi Ideal';
+                ecAdvice = 'Larutan nutrisi dalam kondisi optimal';
+                ecConditionColor = const Color(0xFF4CAF50); // Green 500
+                ecTextColor = const Color(0xFF2E7D32); // Green 800
+                ecConditionIcon = Icons.check_circle;
+              } else if (ecStatus == 'Kekurangan') {
+                ecCondition = 'Konsentrasi Nutrisi Rendah';
+                ecAdvice = 'Tambahkan larutan nutrisi hidroponik';
+                ecConditionColor = const Color(0xFFE53935); // Red 600
+                ecTextColor = const Color(0xFFC62828); // Red 800
+                ecConditionIcon = Icons.error;
+              } else {
+                ecCondition = 'Konsentrasi Nutrisi Tinggi';
+                ecAdvice = 'Encerkan larutan atau ganti dengan air bersih';
+                ecConditionColor = Colors.orange.shade700;
+                ecTextColor = Colors.orange.shade900;
+                ecConditionIcon = Icons.warning;
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // EC condition summary card
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: ecConditionColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: ecConditionColor.withOpacity(0.4),
+                        width: 2,
                       ),
-                      child: Column(
-                        children: [
-                          Row(
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(ecConditionIcon, color: ecTextColor, size: 28),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Kondisi Larutan Nutrisi',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade800,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    ecCondition,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: ecTextColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'EC/TDS: $ecStatus',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: ecConditionColor.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
                             children: [
                               Icon(
-                                conditionIcon,
-                                color: conditionTextColor,
-                                size: 32,
+                                Icons.lightbulb_outline,
+                                color: ecTextColor,
+                                size: 18,
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 8),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Kondisi Tanaman',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      plantCondition,
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w600,
-                                        color: conditionTextColor,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'N: $nStatus • P: $pStatus • K: $kStatus',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                  ],
+                                child: Text(
+                                  ecAdvice,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: ecTextColor,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: conditionColor.withOpacity(0.4),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.lightbulb_outline,
-                                  color: conditionTextColor,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    plantAdvice,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: conditionTextColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
+                  ),
+                  const SizedBox(height: 16),
 
-                    // Individual nutrient cards
-                    _buildNutrientCard(
-                      'Nitrogen (N)',
-                      nitrogen,
-                      nitrogenMin,
-                      nitrogenMax,
-                      'Pertumbuhan daun & batang',
-                      _getNutrientColor(nitrogen, nitrogenMin, nitrogenMax),
-                      nStatus,
-                    ),
-                    const SizedBox(height: 12),
+                  // EC nutrient card
+                  _buildNutrientCard(
+                    'EC/TDS (Nutrisi Terlarut)',
+                    ec,
+                    ecMin,
+                    ecMax,
+                    'Total nutrisi yang tersedia di dalam larutan',
+                    _getNutrientColor(ec, ecMin, ecMax),
+                    ecStatus,
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
 
-                    _buildNutrientCard(
-                      'Phosphorus (P)',
-                      phosphorus,
-                      phosphorusMin,
-                      phosphorusMax,
-                      'Pembentukan bunga & akar',
-                      _getNutrientColor(
-                        phosphorus,
-                        phosphorusMin,
-                        phosphorusMax,
-                      ),
-                      pStatus,
-                    ),
-                    const SizedBox(height: 12),
-
-                    _buildNutrientCard(
-                      'Potassium (K)',
-                      potassium,
-                      potassiumMin,
-                      potassiumMax,
-                      'Kekuatan batang & resistensi penyakit',
-                      _getNutrientColor(potassium, potassiumMin, potassiumMax),
-                      kStatus,
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Tips Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.shade200),
+          // NPK Section
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Nutrisi Utama (NPK)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              if (fase.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.lightbulb, color: Colors.amber.shade700),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Tips Pemupukan',
+                      Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: Colors.blue.shade700,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Threshold disesuaikan fase $fase',
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Combined NPK StreamBuilder with plant condition summary
+          StreamBuilder<DatabaseEvent>(
+            stream: db.child('smartfarm/sensors/$varietasToUse').onValue,
+            builder: (context, snapshot) {
+              // Parse sensor values
+              double nitrogen = 0, phosphorus = 0, potassium = 0;
+
+              if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+                final data =
+                    snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                nitrogen = (data['nitrogen'] is num)
+                    ? (data['nitrogen'] as num).toDouble()
+                    : 0.0;
+                phosphorus = (data['phosphorus'] is num)
+                    ? (data['phosphorus'] as num).toDouble()
+                    : 0.0;
+                potassium = (data['potassium'] is num)
+                    ? (data['potassium'] as num).toDouble()
+                    : 0.0;
+              }
+
+              // Calculate status for each nutrient
+              final nStatus = _getNutrientStatus(
+                nitrogen,
+                nitrogenMin,
+                nitrogenMax,
+              );
+              final pStatus = _getNutrientStatus(
+                phosphorus,
+                phosphorusMin,
+                phosphorusMax,
+              );
+              final kStatus = _getNutrientStatus(
+                potassium,
+                potassiumMin,
+                potassiumMax,
+              );
+
+              // Determine overall plant condition with detailed scenarios
+              String plantCondition;
+              String plantAdvice;
+              Color conditionColor;
+              IconData conditionIcon;
+
+              final normalCount = [
+                nStatus,
+                pStatus,
+                kStatus,
+              ].where((s) => s == 'Normal').length;
+              final kekuranganCount = [
+                nStatus,
+                pStatus,
+                kStatus,
+              ].where((s) => s == 'Kekurangan').length;
+              final berlebihCount = [
+                nStatus,
+                pStatus,
+                kStatus,
+              ].where((s) => s == 'Berlebih').length;
+
+              // Detailed condition analysis based on NPK combination
+              Color conditionTextColor;
+
+              if (normalCount == 3) {
+                plantCondition = 'Tanaman Sehat & Optimal';
+                plantAdvice = 'Pertahankan kondisi nutrisi saat ini';
+                conditionColor = const Color(0xFF4CAF50); // Green 500
+                conditionTextColor = const Color(0xFF2E7D32); // Green 800
+                conditionIcon = Icons.check_circle;
+              } else if (kekuranganCount == 3) {
+                plantCondition = 'Nutrisi Sangat Kurang';
+                plantAdvice = 'Segera lakukan pemupukan NPK lengkap';
+                conditionColor = const Color(0xFFE53935); // Red 600
+                conditionTextColor = const Color(0xFFC62828); // Red 800
+                conditionIcon = Icons.error;
+              } else if (berlebihCount == 3) {
+                plantCondition = 'Nutrisi Berlebihan';
+                plantAdvice = 'Hentikan pemupukan, tingkatkan penyiraman';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning;
+              } else if (nStatus == 'Kekurangan' &&
+                  pStatus == 'Normal' &&
+                  kStatus == 'Normal') {
+                plantCondition = 'Kurang Nitrogen (N)';
+                plantAdvice = 'Daun menguning - tambah pupuk Urea/N';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning_amber;
+              } else if (pStatus == 'Kekurangan' &&
+                  nStatus == 'Normal' &&
+                  kStatus == 'Normal') {
+                plantCondition = 'Kurang Fosfor (P)';
+                plantAdvice = 'Pertumbuhan lambat - tambah pupuk TSP/P';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning_amber;
+              } else if (kStatus == 'Kekurangan' &&
+                  nStatus == 'Normal' &&
+                  pStatus == 'Normal') {
+                plantCondition = 'Kurang Kalium (K)';
+                plantAdvice = 'Batang lemah - tambah pupuk KCl/K';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning_amber;
+              } else if (nStatus == 'Kekurangan' && pStatus == 'Kekurangan') {
+                plantCondition = 'Kurang N & P';
+                plantAdvice = 'Pertumbuhan terhambat - perlu NPK';
+                conditionColor = const Color(0xFFE53935); // Red 600
+                conditionTextColor = const Color(0xFFC62828); // Red 800
+                conditionIcon = Icons.error_outline;
+              } else if (nStatus == 'Kekurangan' && kStatus == 'Kekurangan') {
+                plantCondition = 'Kurang N & K';
+                plantAdvice = 'Tanaman lemah - perlu pupuk N & K';
+                conditionColor = const Color(0xFFE53935); // Red 600
+                conditionTextColor = const Color(0xFFC62828); // Red 800
+                conditionIcon = Icons.error_outline;
+              } else if (pStatus == 'Kekurangan' && kStatus == 'Kekurangan') {
+                plantCondition = 'Kurang P & K';
+                plantAdvice = 'Akar & batang lemah - perlu P & K';
+                conditionColor = const Color(0xFFE53935); // Red 600
+                conditionTextColor = const Color(0xFFC62828); // Red 800
+                conditionIcon = Icons.error_outline;
+              } else if (nStatus == 'Berlebih') {
+                plantCondition = 'Nitrogen Berlebih';
+                plantAdvice = 'Risiko pertumbuhan vegetatif berlebih';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning;
+              } else if (pStatus == 'Berlebih') {
+                plantCondition = 'Fosfor Berlebih';
+                plantAdvice = 'Dapat menghambat unsur mikro lain';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning;
+              } else if (kStatus == 'Berlebih') {
+                plantCondition = 'Kalium Berlebih';
+                plantAdvice = 'Dapat mengganggu penyerapan Mg & Ca';
+                conditionColor = Colors.orange.shade700;
+                conditionTextColor = Colors.orange.shade900;
+                conditionIcon = Icons.warning;
+              } else if (normalCount >= 2) {
+                plantCondition = 'Tanaman Cukup Baik';
+                plantAdvice = 'Perlu sedikit penyesuaian nutrisi';
+                conditionColor = const Color(0xFF66BB6A); // Light Green 400
+                conditionTextColor = const Color(0xFF388E3C); // Green 700
+                conditionIcon = Icons.check_circle_outline;
+              } else {
+                plantCondition = 'Nutrisi Tidak Seimbang';
+                plantAdvice = 'Evaluasi dan sesuaikan pemupukan';
+                conditionColor = const Color(0xFFFFCA28); // Amber 400
+                conditionTextColor = const Color(0xFFF57F17); // Yellow 900
+                conditionIcon = Icons.warning_amber;
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Plant condition summary card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: conditionColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: conditionColor.withOpacity(0.5),
+                        width: 2.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: conditionColor.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              conditionIcon,
+                              color: conditionTextColor,
+                              size: 32,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Kondisi Tanaman',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    plantCondition,
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                      color: conditionTextColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'N: $nStatus • P: $pStatus • K: $kStatus',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: conditionColor.withOpacity(0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.lightbulb_outline,
+                                color: conditionTextColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  plantAdvice,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: conditionTextColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Individual nutrient cards
+                  _buildNutrientCard(
+                    'Nitrogen (N)',
+                    nitrogen,
+                    nitrogenMin,
+                    nitrogenMax,
+                    'Pertumbuhan daun & batang',
+                    _getNutrientColor(nitrogen, nitrogenMin, nitrogenMax),
+                    nStatus,
+                  ),
                   const SizedBox(height: 12),
-                  _buildTipItem(
-                    '1. Waktu Pemupukan',
-                    'Lakukan pemupukan pada pagi atau sore hari untuk hasil optimal. Hindari siang hari yang panas.',
+
+                  _buildNutrientCard(
+                    'Phosphorus (P)',
+                    phosphorus,
+                    phosphorusMin,
+                    phosphorusMax,
+                    'Pembentukan bunga & akar',
+                    _getNutrientColor(phosphorus, phosphorusMin, phosphorusMax),
+                    pStatus,
                   ),
-                  const SizedBox(height: 8),
-                  _buildTipItem(
-                    '2. Takaran Pupuk',
-                    'Ikuti dosis yang dianjurkan. Lebih baik kurang dari berlebih - nutrisi berlebih dapat merusak tanaman.',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTipItem(
-                    '3. Jenis Pupuk',
-                    'Gunakan pupuk berkualitas tinggi (NPK seimbang) atau pupuk organik untuk hasil jangka panjang.',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTipItem(
-                    '4. Monitoring',
-                    'Periksa sensor NPK secara berkala (setiap 3-5 hari) untuk memantau efektivitas pemupukan.',
+                  const SizedBox(height: 12),
+
+                  _buildNutrientCard(
+                    'Potassium (K)',
+                    potassium,
+                    potassiumMin,
+                    potassiumMax,
+                    'Kekuatan batang & resistensi penyakit',
+                    _getNutrientColor(potassium, potassiumMin, potassiumMax),
+                    kStatus,
                   ),
                 ],
-              ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+
+          // Tips Card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B5E20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildNavItem(
-                  icon: Icons.toggle_on_outlined,
-                  label: 'Kontrol',
-                  route: '/main',
-                  index: 0,
+                Row(
+                  children: [
+                    Icon(Icons.lightbulb, color: Colors.amber.shade700),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Tips Pemupukan',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                _buildNavItem(
-                  icon: Icons.history,
-                  label: 'Histori',
-                  route: '/main',
-                  index: 1,
+                const SizedBox(height: 12),
+                _buildTipItem(
+                  '1. Waktu Pemupukan',
+                  'Lakukan pemupukan pada pagi atau sore hari untuk hasil optimal. Hindari siang hari yang panas.',
                 ),
-                _buildNavItem(
-                  icon: Icons.dashboard_outlined,
-                  label: 'Dashboard',
-                  route: '/main',
-                  index: 2,
+                const SizedBox(height: 8),
+                _buildTipItem(
+                  '2. Takaran Pupuk',
+                  'Ikuti dosis yang dianjurkan. Lebih baik kurang dari berlebih - nutrisi berlebih dapat merusak tanaman.',
                 ),
-                _buildNavItem(
-                  icon: Icons.settings_outlined,
-                  label: 'Pengaturan',
-                  route: '/main',
-                  index: 3,
+                const SizedBox(height: 8),
+                _buildTipItem(
+                  '3. Jenis Pupuk',
+                  'Gunakan pupuk berkualitas tinggi (NPK seimbang) atau pupuk organik untuk hasil jangka panjang.',
                 ),
-                _buildNavItem(
-                  icon: Icons.person_outline,
-                  label: 'Profile',
-                  route: '/main',
-                  index: 4,
+                const SizedBox(height: 8),
+                _buildTipItem(
+                  '4. Monitoring',
+                  'Periksa sensor NPK secara berkala (setiap 3-5 hari) untuk memantau efektivitas pemupukan.',
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required String route,
-    required int index,
-  }) {
-    return InkWell(
-      onTap: () {
-        Navigator.pushReplacementNamed(
-          context,
-          route,
-          arguments: {'initialIndex': index},
-        );
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white70, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
