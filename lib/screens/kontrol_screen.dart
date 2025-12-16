@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/plant_utils.dart';
@@ -223,33 +222,50 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Header
-          _buildHeaderCard(),
-          const SizedBox(height: 24),
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.green.shade50, Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SingleChildScrollView(
+          // balanced bottom padding to avoid overlap with bottom navigation
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).padding.bottom + 80,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              _buildHeaderCard(),
+              const SizedBox(height: 24),
 
-          // Plant Info Card (umur, fase, progress, pupuk)
-          _buildPlantInfoCard(),
-          const SizedBox(height: 24),
+              // Status Dashboard
+              _buildStatusDashboard(),
+              const SizedBox(height: 24),
 
-          // Mode Control Card
-          _buildModeControlCard(),
-          const SizedBox(height: 20),
+              // Mode Control Card
+              _buildModeControlCard(),
+              const SizedBox(height: 20),
 
-          // Pompa Control Card
-          _buildPompaControlCard(),
-          const SizedBox(height: 20),
+              // Pompa Control Card
+              _buildPompaControlCard(),
+              const SizedBox(height: 20),
 
-          // Ambang Batas Settings
-          _buildThresholdSettingsCard(),
-          const SizedBox(height: 20),
-
-          // Status Dashboard
-          _buildStatusDashboard(),
-        ],
+              // Ambang Batas Settings
+              _buildThresholdSettingsCard(),
+              const SizedBox(height: 20),
+              // extra space to ensure controls don't get hidden by bottom nav
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -260,7 +276,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
     );
 
     if (waktuTanamMillis == null) {
-      print('⚠️ KONTROL: Showing "not set" message');
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(24),
@@ -297,8 +312,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
         ),
       );
     }
-
-    print('✅ KONTROL: Showing plant growth details');
 
     final info = PlantUtils.calculateGrowthInfo(
       waktuTanamMillis: waktuTanamMillis!,
@@ -349,7 +362,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                     Shadow(
                       color: faseColor.withOpacity(0.3),
                       blurRadius: 8,
-                      offset: Offset(0, 2),
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -361,45 +374,49 @@ class _KontrolScreenState extends State<KontrolScreen> {
             children: [
               _build3DProgressBar(info.progressPanen, faseColor),
               const SizedBox(width: 18),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Umur',
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                  Text(
-                    '${info.umurHari} hari',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: faseColor,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox.shrink(),
+                    Text(
+                      'Umur',
+                      style: TextStyle(fontSize: 13, color: Colors.black54),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Fase',
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: faseColor.withOpacity(0.13),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      info.fase,
+                    Text(
+                      '${info.umurHari} hari',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: faseColor,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Fase',
+                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: faseColor.withOpacity(0.13),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        info.fase,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: faseColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -432,22 +449,25 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   'Pupuk berikutnya: ',
                   style: TextStyle(fontSize: 13, color: Colors.black54),
                 ),
-                Text(
-                  'Hari ke-${info.jadwalPupukBerikutnya!['hari']} (${info.jadwalPupukBerikutnya!['nama']})',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.brown,
+                Flexible(
+                  child: Text(
+                    'Hari ke-${info.jadwalPupukBerikutnya!['hari']} (${info.jadwalPupukBerikutnya!['nama']})',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.brown,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             )
           else
             Row(
-              children: [
+              children: const [
                 Icon(Icons.check_circle, color: Colors.green, size: 20),
-                const SizedBox(width: 8),
-                const Text(
+                SizedBox(width: 8),
+                Text(
                   'Semua jadwal pupuk selesai',
                   style: TextStyle(fontSize: 13, color: Colors.green),
                 ),
@@ -513,19 +533,31 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildHeaderCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.green.shade700, Colors.green.shade500],
+          colors: [
+            Colors.green.shade600,
+            Colors.green.shade400,
+            Colors.green.shade300,
+          ],
+          stops: const [0.0, 0.75, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.green.shade400.withOpacity(0.6),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -538,6 +570,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: Colors.white,
+              letterSpacing: 0.5,
             ),
           ),
           const SizedBox(height: 8),
@@ -545,23 +578,8 @@ class _KontrolScreenState extends State<KontrolScreen> {
             'Kelola pompa dan mode otomatis/manual',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.white.withOpacity(0.9),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'Varietas: ${activeVarietas?.replaceAll("_", " ").toUpperCase() ?? "Belum dipilih"}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+              color: Colors.white.withOpacity(0.95),
+              letterSpacing: 0.3,
             ),
           ),
         ],
@@ -571,15 +589,16 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildModeControlCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.green.shade100.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 1,
           ),
         ],
       ),
@@ -589,23 +608,44 @@ class _KontrolScreenState extends State<KontrolScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Flexible(
+                child: Row(
                   children: [
-                    Text(
-                      'Mode Otomatis',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.blue.shade100, Colors.blue.shade50],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.auto_mode,
+                        color: Colors.blue.shade700,
+                        size: 24,
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Pompa mengikuti kelembapan tanah',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Mode Otomatis',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Pompa mengikuti kelembapan tanah',
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -626,55 +666,97 @@ class _KontrolScreenState extends State<KontrolScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.shade200),
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade50, Colors.white],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.blue.shade200, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.shade100.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.info, color: Colors.blue, size: 20),
-                SizedBox(width: 8),
-                Flexible(
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.autorenew,
+                    color: Colors.blue.shade700,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
                   child: Text(
                     'Mode Otomatis: Pompa otomatis ON jika tanah kering dan OFF jika tanah basah sesuai ambang batas.',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       color: Colors.blue,
-                      height: 1.3,
+                      height: 1.4,
                     ),
-                    maxLines: 3,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.shade200),
+              gradient: LinearGradient(
+                colors: [Colors.orange.shade50, Colors.white],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange.shade200, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.shade100.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.info, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
-                Flexible(
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.touch_app,
+                    color: Colors.orange.shade700,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
                   child: Text(
                     'Mode Manual: Anda bisa mengontrol pompa ON/OFF secara manual.',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       color: Colors.orange,
-                      height: 1.3,
+                      height: 1.4,
                     ),
-                    maxLines: 2,
                   ),
                 ),
               ],
@@ -687,24 +769,44 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildPompaControlCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.green.shade100.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 1,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Kontrol Pompa',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green.shade100, Colors.green.shade50],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.water_drop,
+                  color: Colors.green.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Kontrol Pompa',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
@@ -714,14 +816,173 @@ class _KontrolScreenState extends State<KontrolScreen> {
                 .map((e) => e.snapshot.value),
             builder: (context, modeSnapshot) {
               bool isAuto = modeSnapshot.data == true;
+
+              // Mode Otomatis - hanya tampilkan info
+              if (isAuto) {
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue.shade50, Colors.white],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.blue.shade200, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.shade100.withOpacity(0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade400,
+                              Colors.blue.shade600,
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.4),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.auto_mode,
+                          size: 50,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade400,
+                              Colors.blue.shade600,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(
+                                Icons.settings_suggest,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'MODE OTOMATIS AKTIF',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Pompa dikontrol otomatis berdasarkan kelembapan tanah',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.shade200,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.info_outline,
+                                color: Colors.blue.shade700,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Aktifkan Mode Manual untuk kontrol pompa secara manual',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // Mode Manual - tampilkan kontrol lengkap
               return Column(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      gradient: LinearGradient(
+                        colors: [Colors.blue.shade50, Colors.white],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.blue.shade100, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.shade100.withOpacity(0.5),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [
@@ -734,30 +995,113 @@ class _KontrolScreenState extends State<KontrolScreen> {
                             bool isOn = snapshot.data == 'ON';
                             return Column(
                               children: [
-                                Icon(
-                                  isOn
-                                      ? Icons.water
-                                      : Icons.water_drop_outlined,
-                                  size: 60,
-                                  color: isOn ? Colors.green : Colors.grey,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  isOn ? '🟢 POMPA AKTIF' : '🔴 POMPA STANDBY',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isOn ? Colors.green : Colors.red,
+                                // Animated pump icon container
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: RadialGradient(
+                                      colors: isOn
+                                          ? [
+                                              Colors.green.shade400,
+                                              Colors.green.shade600,
+                                            ]
+                                          : [
+                                              Colors.grey.shade300,
+                                              Colors.grey.shade500,
+                                            ],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: isOn
+                                            ? Colors.green.withOpacity(0.4)
+                                            : Colors.grey.withOpacity(0.3),
+                                        blurRadius: isOn ? 30 : 15,
+                                        spreadRadius: isOn ? 8 : 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    isOn
+                                        ? Icons.water
+                                        : Icons.water_drop_outlined,
+                                    size: 60,
+                                    color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 20),
+                                // Status badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: isOn
+                                          ? [
+                                              Colors.green.shade400,
+                                              Colors.green.shade600,
+                                            ]
+                                          : [
+                                              Colors.red.shade400,
+                                              Colors.red.shade600,
+                                            ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: isOn
+                                            ? Colors.green.withOpacity(0.3)
+                                            : Colors.red.withOpacity(0.3),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.white,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.white.withOpacity(
+                                                0.5,
+                                              ),
+                                              blurRadius: isOn ? 10 : 5,
+                                              spreadRadius: isOn ? 2 : 0,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        isOn ? 'POMPA AKTIF' : 'POMPA STANDBY',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
                                 Text(
                                   isOn
                                       ? 'Pompa sedang menyiram tanaman'
                                       : 'Pompa dalam mode standby',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
@@ -784,50 +1128,147 @@ class _KontrolScreenState extends State<KontrolScreen> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: (_isTogglingPompa || isOn)
-                                        ? null
-                                        : () {
-                                            _togglePompa(true);
-                                          },
-                                    icon: const Icon(Icons.power),
-                                    label: const Text('Nyalakan Pompa'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          (_isTogglingPompa || isOn)
-                                          ? Colors.grey
-                                          : Colors.green,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: (_isTogglingPompa || isOn)
+                                            ? [
+                                                Colors.grey.shade300,
+                                                Colors.grey.shade400,
+                                              ]
+                                            : [
+                                                Colors.green.shade400,
+                                                Colors.green.shade600,
+                                              ],
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        if (!_isTogglingPompa && !isOn)
+                                          BoxShadow(
+                                            color: Colors.green.withOpacity(
+                                              0.4,
+                                            ),
+                                            blurRadius: 15,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: (_isTogglingPompa || isOn)
+                                          ? null
+                                          : () {
+                                              _togglePompa(true);
+                                            },
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.center,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: const [
+                                            Icon(
+                                              Icons.power_settings_new,
+                                              size: 18,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'Nyalakan Pompa',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 16),
                                 Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: (_isTogglingPompa || !isOn)
-                                        ? null
-                                        : () {
-                                            _togglePompa(false);
-                                          },
-                                    icon: const Icon(Icons.power_off),
-                                    label: const Text('Matikan Pompa'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          (_isTogglingPompa || !isOn)
-                                          ? Colors.grey
-                                          : Colors.red,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: (_isTogglingPompa || !isOn)
+                                            ? [
+                                                Colors.grey.shade300,
+                                                Colors.grey.shade400,
+                                              ]
+                                            : [
+                                                Colors.red.shade400,
+                                                Colors.red.shade600,
+                                              ],
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        if (!_isTogglingPompa && isOn)
+                                          BoxShadow(
+                                            color: Colors.red.withOpacity(0.4),
+                                            blurRadius: 15,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: (_isTogglingPompa || !isOn)
+                                          ? null
+                                          : () {
+                                              _togglePompa(false);
+                                            },
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.center,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: const [
+                                            Icon(Icons.power_off, size: 18),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'Matikan Pompa',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -870,96 +1311,10 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                     ),
                                   ],
                                 ),
-                              )
-                            else if (!isOn)
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.yellow.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.yellow.shade200,
-                                  ),
-                                ),
-                                child: const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.warning_amber,
-                                      color: Colors.orange,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Pompa standby. Klik "Nyalakan Pompa" untuk menyirami.',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.orange,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.green.shade200,
-                                  ),
-                                ),
-                                child: const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Pompa sedang aktif. Klik "Matikan Pompa" untuk berhenti.',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.green,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ),
                           ],
                         );
                       },
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: const Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.auto_mode, color: Colors.blue, size: 20),
-                          SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Mode Otomatis aktif. Pompa dikontrol secara otomatis berdasarkan kelembapan tanah.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.blue,
-                              ),
-                              overflow: TextOverflow.visible,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                 ],
               );
@@ -972,60 +1327,92 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildThresholdSettingsCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.green.shade100.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 1,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.settings, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Pengaturan Ambang Batas',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.purple.shade100, Colors.purple.shade50],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.tune,
+                  color: Colors.purple.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Pengaturan Ambang Batas',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Pengaturan ambang batas kelembapan tanah, suhu, dan cahaya dapat diatur dari halaman Profile sesuai dengan varietas yang dipilih.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-            maxLines: 3,
-            overflow: TextOverflow.visible,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.purple.shade50, Colors.white],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.shade100, width: 1.5),
+            ),
+            child: const Text(
+              'Pengaturan ambang batas kelembapan tanah, suhu, dan cahaya dapat diatur dari halaman Profile sesuai dengan varietas yang dipilih.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black87,
+                height: 1.4,
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () {
                 Navigator.pushNamed(context, '/settings');
               },
-              icon: const Icon(Icons.settings, size: 18),
+              icon: const Icon(Icons.settings, size: 20),
               label: const Text(
                 'Pergi ke Pengaturan',
-                style: TextStyle(fontSize: 13),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: Colors.purple.shade600,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  vertical: 12,
-                  horizontal: 16,
+                  vertical: 16,
+                  horizontal: 24,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                elevation: 4,
+                shadowColor: Colors.purple.shade200,
               ),
             ),
           ),
@@ -1036,28 +1423,42 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildStatusDashboard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.green.shade100.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 1,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.dashboard, size: 20),
-              SizedBox(width: 8),
-              Text(
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.indigo.shade100, Colors.indigo.shade50],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.dashboard_outlined,
+                  color: Colors.indigo.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
                 'Status Sistem',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1105,11 +1506,22 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildStatusItem(String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
