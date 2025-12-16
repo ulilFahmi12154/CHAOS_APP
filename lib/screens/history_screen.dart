@@ -44,6 +44,9 @@ class _HistoryScreenState extends State<HistoryScreen>
   double _maxX = 24;
   double _bottomInterval = 4;
 
+  // Chart view mode
+  String _chartViewMode = 'hourly'; // 'hourly', 'daily', 'monthly'
+
   @override
   void initState() {
     super.initState();
@@ -78,10 +81,35 @@ class _HistoryScreenState extends State<HistoryScreen>
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF2E7D32),
+            colorScheme: ColorScheme.light(
+              primary: const Color(0xFF2E7D32),
               onPrimary: Colors.white,
-              onSurface: Colors.black,
+              surface: Colors.white,
+              onSurface: Colors.black87,
+              secondary: const Color(0xFF4CAF50),
+              onSecondary: Colors.white,
+            ),
+            datePickerTheme: DatePickerThemeData(
+              headerBackgroundColor: const Color(0xFF2E7D32),
+              headerForegroundColor: Colors.white,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              rangePickerBackgroundColor: Colors.grey.shade50,
+              rangeSelectionBackgroundColor: const Color(
+                0xFF4CAF50,
+              ).withOpacity(0.2),
+              todayBorder: const BorderSide(color: Color(0xFF2E7D32), width: 2),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF2E7D32),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
             ),
           ),
           child: child!,
@@ -594,25 +622,137 @@ class _HistoryScreenState extends State<HistoryScreen>
         dataKey = 'kelembaban_tanah';
     }
 
-    final spots =
-        filteredData
-            .map((item) {
-              final ts = item['timestamp'] as int;
-              final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-              final v = item[dataKey];
-              if (v == null) return null;
-              final y = (v is int) ? v.toDouble() : (v as double);
-              final x = dt.hour + (dt.minute / 60.0);
-              return FlSpot(x, y);
-            })
-            .whereType<FlSpot>()
-            .toList()
-          ..sort((a, b) => a.x.compareTo(b.x));
+    // Determine view mode based on date range
+    if (_startDate == null || _endDate == null) {
+      return [];
+    }
 
-    // Update axis untuk tampilan per jam (0-23)
+    final daysDifference = _endDate!.difference(_startDate!).inDays;
+
+    // Single Day View (0 days difference means same day)
+    if (daysDifference == 0) {
+      return _getHourlyChartData(filteredData, dataKey);
+    }
+    // Month/Multi-day View (1-90 days)
+    else if (daysDifference <= 90) {
+      return _getDailyChartData(filteredData, dataKey);
+    }
+    // Year View (> 90 days)
+    else {
+      return _getMonthlyChartData(filteredData, dataKey);
+    }
+  }
+
+  List<FlSpot> _getHourlyChartData(
+    List<Map<String, dynamic>> data,
+    String dataKey,
+  ) {
+    _chartViewMode = 'hourly';
+
+    // Return ALL raw data points without aggregation for same-day view
+    List<FlSpot> spots = [];
+
+    for (var item in data) {
+      final value = item[dataKey];
+      if (value == null) continue;
+
+      final doubleValue = (value is int) ? value.toDouble() : (value as double);
+      final timestamp = item['timestamp'] as int;
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+
+      // Use hour + minute as decimal (e.g., 14:30 = 14.5)
+      final x = dateTime.hour + (dateTime.minute / 60.0);
+      spots.add(FlSpot(x, doubleValue));
+    }
+
+    spots.sort((a, b) => a.x.compareTo(b.x));
+
+    // Configure axis for hourly view
     _minX = 0;
     _maxX = 23;
-    _bottomInterval = 4; // Tampilkan: 0, 4, 8, 12, 16, 20
+    _bottomInterval = 4; // Show: 0, 4, 8, 12, 16, 20
+
+    return spots;
+  }
+
+  List<FlSpot> _getDailyChartData(
+    List<Map<String, dynamic>> data,
+    String dataKey,
+  ) {
+    _chartViewMode = 'daily';
+
+    // Group by day
+    Map<String, List<double>> dailyGroups = {};
+
+    for (var item in data) {
+      final value = item[dataKey];
+      if (value == null) continue;
+
+      final doubleValue = (value is int) ? value.toDouble() : (value as double);
+      final timestamp = item['timestamp'] as int;
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      final dayKey =
+          '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+
+      dailyGroups.putIfAbsent(dayKey, () => []);
+      dailyGroups[dayKey]!.add(doubleValue);
+    }
+
+    // Calculate average for each day and create spots
+    List<FlSpot> spots = [];
+    dailyGroups.forEach((dayKey, values) {
+      final avg = values.reduce((a, b) => a + b) / values.length;
+      final date = DateTime.parse(dayKey);
+      // Use day of month as x value (1-31)
+      spots.add(FlSpot(date.day.toDouble(), avg));
+    });
+
+    spots.sort((a, b) => a.x.compareTo(b.x));
+
+    // Configure axis for daily view
+    _minX = 1;
+    _maxX = 31;
+    // Set interval to 7 days
+    _bottomInterval = 7;
+
+    return spots;
+  }
+
+  List<FlSpot> _getMonthlyChartData(
+    List<Map<String, dynamic>> data,
+    String dataKey,
+  ) {
+    _chartViewMode = 'monthly';
+
+    // Group by month
+    Map<int, List<double>> monthlyGroups = {};
+
+    for (var item in data) {
+      final value = item[dataKey];
+      if (value == null) continue;
+
+      final doubleValue = (value is int) ? value.toDouble() : (value as double);
+      final timestamp = item['timestamp'] as int;
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      final month = dateTime.month; // 1-12
+
+      monthlyGroups.putIfAbsent(month, () => []);
+      monthlyGroups[month]!.add(doubleValue);
+    }
+
+    // Calculate average for each month
+    List<FlSpot> spots = [];
+    monthlyGroups.forEach((month, values) {
+      final avg = values.reduce((a, b) => a + b) / values.length;
+      spots.add(FlSpot(month.toDouble(), avg));
+    });
+
+    spots.sort((a, b) => a.x.compareTo(b.x));
+
+    // Configure axis for monthly view
+    _minX = 1;
+    _maxX = 12;
+    _bottomInterval = 1; // Show all months
 
     return spots;
   }
@@ -1136,15 +1276,17 @@ class _HistoryScreenState extends State<HistoryScreen>
     List<FlSpot> spots = _getChartData();
 
     if (spots.isEmpty) {
-      return const Center(
-        child: Text(
-          'Tidak ada data untuk ditampilkan',
+      return Container(
+        height: 300,
+        alignment: Alignment.center,
+        child: const Text(
+          'Tidak ada data untuk rentang tanggal ini',
           style: TextStyle(color: Colors.grey),
         ),
       );
     }
+
     // choose left axis interval depending on selected data type
-    // for intensity and kelembapan tanah we use 1k steps; otherwise smaller steps
     double leftInterval;
     if (_selectedDataType == 2 || _selectedDataType == 0) {
       leftInterval = 1000;
@@ -1157,100 +1299,162 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
     double minY = 0;
 
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: leftInterval,
-          getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
-          },
-        ),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            axisNameWidget: Text(
-              _getYAxisLabel(),
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
-            ),
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              interval: leftInterval,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()}',
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                );
-              },
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 30,
-              interval: _bottomInterval,
-              getTitlesWidget: (value, meta) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    _bottomTitle(value),
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                );
-              },
-            ),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-        ),
-        borderData: FlBorderData(show: false),
-        minX: _minX,
-        maxX: _maxX,
-        minY: minY,
-        maxY: _getMaxYValue(),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            color: const Color(0xFF10B981),
-            barWidth: 3,
-            dotData: FlDotData(
-              show: true,
-              getDotPainter: (spot, percent, barData, index) {
-                return FlDotCirclePainter(
-                  radius: 4,
-                  color: const Color(0xFF10B981),
-                  strokeWidth: 2,
-                  strokeColor: Colors.white,
-                );
-              },
-            ),
-            belowBarData: BarAreaData(
-              show: true,
-              color: const Color(0xFF10B981).withOpacity(0.3),
-            ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
-        lineTouchData: LineTouchData(
-          enabled: true,
-          touchTooltipData: LineTouchTooltipData(
-            tooltipRoundedRadius: 8,
-            getTooltipItems: (List<LineBarSpot> touchedSpots) {
-              return touchedSpots.map((spot) {
-                return LineTooltipItem(
-                  '${spot.y.toStringAsFixed(0)}${_unitSuffix()}',
-                  const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                );
-              }).toList();
+      ),
+      padding: const EdgeInsets.all(16),
+      child: LineChart(
+        LineChartData(
+          minX: _minX,
+          maxX: _maxX,
+          minY: minY,
+          maxY: _getMaxYValue(),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: true,
+            horizontalInterval: leftInterval,
+            verticalInterval: _bottomInterval,
+            getDrawingHorizontalLine: (value) {
+              return FlLine(
+                color: Colors.grey.withOpacity(0.2),
+                strokeWidth: 1,
+              );
             },
+            getDrawingVerticalLine: (value) {
+              return FlLine(
+                color: Colors.grey.withOpacity(0.2),
+                strokeWidth: 1,
+              );
+            },
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 32,
+                interval: _bottomInterval,
+                getTitlesWidget: (value, meta) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      _bottomTitle(value),
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: leftInterval,
+                reservedSize: 55,
+                getTitlesWidget: (value, meta) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          borderData: FlBorderData(
+            show: true,
+            border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
+          ),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              color: _getSensorColor(_selectedDataType),
+              barWidth: 3,
+              isStrokeCapRound: true,
+              dotData: FlDotData(
+                show:
+                    spots.length <= 50, // Show dots only if not too many points
+                getDotPainter: (spot, percent, barData, index) {
+                  return FlDotCirclePainter(
+                    radius: 4,
+                    color: Colors.white,
+                    strokeWidth: 2,
+                    strokeColor: _getSensorColor(_selectedDataType),
+                  );
+                },
+              ),
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  colors: [
+                    _getSensorColor(_selectedDataType).withOpacity(0.3),
+                    _getSensorColor(_selectedDataType).withOpacity(0.05),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ],
+          lineTouchData: LineTouchData(
+            enabled: true,
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (touchedSpot) => Colors.black87,
+              tooltipRoundedRadius: 8,
+              tooltipPadding: const EdgeInsets.all(8),
+              getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                  String label = '';
+                  switch (_chartViewMode) {
+                    case 'hourly':
+                      label = _bottomTitle(touchedSpot.x);
+                      break;
+                    case 'daily':
+                      label = 'Day ${touchedSpot.x.toInt()}';
+                      break;
+                    case 'monthly':
+                      label = _bottomTitle(touchedSpot.x);
+                      break;
+                  }
+
+                  return LineTooltipItem(
+                    '$label\n${touchedSpot.y.toStringAsFixed(1)}${_unitSuffix()}',
+                    const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  );
+                }).toList();
+              },
+            ),
+            handleBuiltInTouches: true,
           ),
         ),
       ),
@@ -1307,15 +1511,16 @@ class _HistoryScreenState extends State<HistoryScreen>
   String _unitSuffix() {
     // Provide unit suffix for stats/tooltip as needed
     switch (_selectedDataType) {
-      case 2:
-        return ''; // Intensitas (lux) – omit unit here to keep compact
-      case 1:
-        return '°'; // temperature (approx)
       case 0:
+        return ''; // Kelembaban tanah (raw value)
+      case 1:
+        return '°C'; // Suhu
+      case 2:
+        return ' Lux'; // Intensitas cahaya
       case 3:
-        return '%';
+        return '%'; // Kelembapan udara
       case 4:
-        return ' pH'; // pH Tanah
+        return ''; // pH tanah
       default:
         return '';
     }
@@ -1323,8 +1528,48 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   String _bottomTitle(double x) {
     final xi = x.round();
-    // Menampilkan format jam (00:00, 04:00, dst)
-    return '${xi.toString().padLeft(2, '0')}:00';
+
+    switch (_chartViewMode) {
+      case 'hourly':
+        // Format as time (00:00, 04:00, etc.)
+        return '${xi.toString().padLeft(2, '0')}:00';
+
+      case 'daily':
+        // Format as day number
+        return xi.toString();
+
+      case 'monthly':
+        // Format as month number
+        return xi.toString();
+
+      default:
+        return xi.toString();
+    }
+  }
+
+  String _bottomSubtitle(double x) {
+    final xi = x.round();
+
+    if (_chartViewMode == 'monthly') {
+      const monthNames = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      if (xi >= 1 && xi <= 12) {
+        return monthNames[xi - 1];
+      }
+    }
+    return '';
   }
 
   Future<int?> _showSensorMenu(BuildContext context) async {
