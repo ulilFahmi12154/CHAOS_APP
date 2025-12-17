@@ -5,9 +5,10 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/realtime_db_service.dart';
 import '../services/phase_threshold_sync_service.dart';
+import '../services/local_notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -249,6 +250,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Auto-sync threshold fase ke RTDB setelah waktu tanam diubah
           _syncThresholdPhase();
+
+          // Schedule all fertilization reminders
+          _scheduleTaskReminders(picked);
         }
       } catch (e) {
         if (mounted) {
@@ -259,6 +263,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  /// Schedule task reminders based on planting date
+  Future<void> _scheduleTaskReminders(DateTime plantingDate) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🔔 Menjadwalkan pengingat tugas...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final notificationService = LocalNotificationService();
+      await notificationService.initialize();
+      await notificationService.requestPermissions();
+      await notificationService.scheduleAllFertilizationReminders(
+        plantingDate: plantingDate,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Pengingat tugas berhasil dijadwalkan!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error scheduling reminders: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Gagal menjadwalkan pengingat: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
     }
   }
@@ -1463,7 +1506,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         Switch(
                           value: notifEnabled,
-                          activeColor: Colors.white,
+                          activeThumbColor: Colors.white,
                           activeTrackColor: Colors.green,
                           onChanged: (v) {
                             setState(() => notifEnabled = v);
