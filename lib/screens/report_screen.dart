@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as ex;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -27,6 +28,10 @@ class _ReportScreenState extends State<ReportScreen> {
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   StreamSubscription<DatabaseEvent>? _varietasSubscription;
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
+
+  // MULTI-LOKASI
+  String? activeLocationId;
 
   @override
   void initState() {
@@ -37,25 +42,83 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void dispose() {
     _varietasSubscription?.cancel();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
-  void _setupVarietasListener() {
+  void _setupVarietasListener() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    // MULTI-LOKASI: Load active location dulu
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        activeLocationId = userDoc.data()?['active_location'] ?? 'lokasi_1';
+        print('📍 REPORT: Active location loaded: $activeLocationId');
+      } else {
+        activeLocationId = 'lokasi_1';
+      }
+    } catch (e) {
+      print('❌ Error loading location: $e');
+      activeLocationId = 'lokasi_1';
+    }
+
+    // Listen to location changes from Firestore
+    _locationSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final newLocationId =
+                snapshot.data()?['active_location'] ?? 'lokasi_1';
+            if (newLocationId != activeLocationId) {
+              print(
+                '📍 REPORT: Location changed: $activeLocationId → $newLocationId',
+              );
+              activeLocationId = newLocationId;
+
+              // Cancel dan re-setup listener varietas untuk lokasi baru
+              _varietasSubscription?.cancel();
+              _setupVarietasListenerForLocation();
+            }
+          }
+        });
+
+    // Setup listener varietas untuk lokasi aktif
+    _setupVarietasListenerForLocation();
+  }
+
+  void _setupVarietasListenerForLocation() {
+    if (activeLocationId == null) {
+      print('⚠️ REPORT: Cannot setup varietas listener, location not loaded');
+      return;
+    }
+
+    print(
+      '🔔 REPORT: Setting up varietas listener for location: $activeLocationId',
+    );
+
+    // MULTI-LOKASI: Listen ke path per-lokasi
     final ref = FirebaseDatabase.instance.ref(
-      'users/${user.uid}/active_varietas',
+      'smartfarm/locations/$activeLocationId/active_varietas',
     );
 
     // Listen to real-time changes
     _varietasSubscription = ref.onValue.listen(
       (event) {
+        print('📡 REPORT: Varietas listener triggered');
+        print('  → Snapshot exists: ${event.snapshot.exists}');
+        print('  → Snapshot value: ${event.snapshot.value}');
+
         if (event.snapshot.exists && mounted) {
           final newVarietas = event.snapshot.value.toString();
-          print(
-            '🔄 Varietas detected: $newVarietas (current: $_activeVarietas)',
-          );
+          print('🔄 REPORT: Varietas changed to $newVarietas');
           setState(() {
             _activeVarietas = newVarietas;
           });
@@ -63,7 +126,7 @@ class _ReportScreenState extends State<ReportScreen> {
           _loadReportData();
         } else if (mounted) {
           // Varietas dihapus atau belum ada
-          print('⚠️ No varietas selected');
+          print('🗑️ REPORT: No varietas selected (deleted or empty)');
           setState(() {
             _activeVarietas = null;
             _isLoadingData = false;

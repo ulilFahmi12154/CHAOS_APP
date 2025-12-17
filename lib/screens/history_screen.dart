@@ -23,7 +23,11 @@ class _HistoryScreenState extends State<HistoryScreen>
   final TransformationController _zoomController = TransformationController();
   StreamSubscription<DatabaseEvent>? _historySubscription;
   StreamSubscription<DatabaseEvent>? _activeVarietasSubscription;
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
   final GlobalKey _sensorDropdownKey = GlobalKey();
+
+  // Multi-lokasi
+  String activeLocationId = 'lokasi_1';
 
   // Tab selections
   int _selectedDataType =
@@ -58,6 +62,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     // Set default date range to last 1 month
     _endDate = DateTime.now();
     _startDate = DateTime.now().subtract(const Duration(days: 30));
+    _setupLocationListener();
     _loadActiveVarietasAndHistory();
   }
 
@@ -66,8 +71,34 @@ class _HistoryScreenState extends State<HistoryScreen>
     _tabController.dispose();
     _historySubscription?.cancel();
     _activeVarietasSubscription?.cancel();
+    _locationSubscription?.cancel();
     _zoomController.dispose();
     super.dispose();
+  }
+
+  /// Setup listener untuk perubahan lokasi aktif
+  void _setupLocationListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _locationSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final newLocationId =
+                snapshot.data()?['active_location'] ?? 'lokasi_1';
+            if (newLocationId != activeLocationId) {
+              print('🔄 HISTORY: Location changed to $newLocationId');
+              setState(() {
+                activeLocationId = newLocationId;
+              });
+              // Reload data untuk lokasi baru
+              _loadActiveVarietasAndHistory();
+            }
+          }
+        });
   }
 
   Future<void> _showDateRangePicker() async {
@@ -294,7 +325,19 @@ class _HistoryScreenState extends State<HistoryScreen>
   Future<void> _loadActiveVarietasAndHistory() async {
     setState(() => _isLoading = true);
     try {
-      // Tentukan varietas pilihan user
+      // Get active location first
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (userDoc.exists) {
+          activeLocationId = userDoc.data()?['active_location'] ?? 'lokasi_1';
+        }
+      }
+
+      // Tentukan varietas pilihan user dari lokasi aktif
       final varietasKey = await _getActiveVarietas();
       _activeVarietas = varietasKey;
 
@@ -303,55 +346,45 @@ class _HistoryScreenState extends State<HistoryScreen>
       await _loadHistoryDataFromRef(ref);
       _subscribeHistory(ref);
 
-      // Dengarkan perubahan pilihan varietas user
+      // Dengarkan perubahan pilihan varietas user dari lokasi aktif (MULTI-LOKASI)
       _activeVarietasSubscription?.cancel();
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        _activeVarietasSubscription = _dbRef
-            .child('users')
-            .child(uid)
-            .onValue
-            .listen((event) {
-              if (event.snapshot.value is Map) {
-                final map = event.snapshot.value as Map;
-                final v =
-                    (map['active_varietas'] ??
-                            (map['settings'] is Map
-                                ? map['settings']['varietas']
-                                : null))
-                        ?.toString();
-                if (v != null && v.isNotEmpty && v != _activeVarietas) {
-                  setState(() => _activeVarietas = v);
-                  _calculateStats();
-                }
+      _activeVarietasSubscription = FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/active_varietas')
+          .onValue
+          .listen((event) {
+            final newVarietas = event.snapshot.exists
+                ? event.snapshot.value?.toString()
+                : null;
+
+            if (mounted) {
+              setState(() {
+                _activeVarietas = newVarietas;
+              });
+              if (newVarietas != null && newVarietas.isNotEmpty) {
+                _calculateStats();
               }
-            });
-      }
+            }
+          });
     } catch (e) {
       print('Error loading active varietas/history: $e');
     }
     setState(() => _isLoading = false);
   }
 
-  // Ambil varietas pilihan user dari users/<uid>/active_varietas atau smartfarm/active_varietas
+  // Ambil varietas pilihan user dari lokasi aktif (MULTI-LOKASI)
   Future<String?> _getActiveVarietas() async {
     String? varietasKey;
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        final userSnap = await _dbRef.child('users').child(uid).get();
-        if (userSnap.exists && userSnap.value is Map) {
-          final map = userSnap.value as Map;
-          varietasKey =
-              (map['active_varietas'] ??
-                      (map['settings'] is Map
-                          ? map['settings']['varietas']
-                          : null))
-                  ?.toString();
-        }
+      // MULTI-LOKASI: Baca dari lokasi aktif
+      final activeVarietasSnap = await _dbRef
+          .child('smartfarm/locations/$activeLocationId/active_varietas')
+          .get();
+
+      if (activeVarietasSnap.exists && activeVarietasSnap.value != null) {
+        varietasKey = activeVarietasSnap.value.toString();
       }
 
-      // Fallback ke smartfarm/active_varietas
+      // Fallback ke smartfarm/active_varietas (global)
       if (varietasKey == null || varietasKey.isEmpty) {
         final global = await _dbRef
             .child('smartfarm')
@@ -924,6 +957,71 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Widget _buildSensorHistoryTab() {
+    // Check if varietas is empty or null
+    if (!_isLoading && (_activeVarietas == null || _activeVarietas!.isEmpty)) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: 64,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Belum Ada Varietas Yang Dipilih',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Silakan pilih varietas terlebih dahulu\ndi halaman Pengaturan untuk melihat\nriwayat data sensor',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings');
+                },
+                icon: const Icon(Icons.settings, size: 20),
+                label: const Text('Pergi ke Pengaturan'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return _isLoading
         ? const Center(child: CircularProgressIndicator(color: Colors.green))
         : SingleChildScrollView(
@@ -1776,18 +1874,82 @@ class _HistoryScreenState extends State<HistoryScreen>
       return const Center(child: Text('Please login'));
     }
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
+    // Check if varietas is empty or null first
+    if (_activeVarietas == null || _activeVarietas!.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: 64,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Belum Ada Varietas Yang Dipilih',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Silakan pilih varietas terlebih dahulu\ndi halaman Pengaturan untuk melihat\njadwal pemupukan',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings');
+                },
+                icon: const Icon(Icons.settings, size: 20),
+                label: const Text('Pergi ke Pengaturan'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // MULTI-LOKASI: Load waktu tanam dari lokasi aktif
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .onValue,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
           return const Center(child: Text('Belum ada data tanam'));
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final waktuTanam = data?['waktu_tanam'] as int?;
+        final waktuTanam = snapshot.data!.snapshot.value as int?;
 
         if (waktuTanam == null) {
           return Center(

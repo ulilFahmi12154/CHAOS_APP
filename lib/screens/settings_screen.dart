@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final GlobalKey _varietasFieldKey = GlobalKey();
   // Dropdown varietas - akan di-load dari Firestore
   List<String> _varietasList = [];
-  String _selectedVarietas = 'patra_3';
+  String _selectedVarietas = ''; // Start with empty string
 
   // Notifikasi
   bool notifEnabled = true;
@@ -60,6 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Lokasi aktif (multi-lokasi)
   String? activeLocationId;
+
+  // Key untuk force rebuild varietas field
+  Key _varietasWidgetKey = UniqueKey();
 
   // Asset icon paths to verify and precache
   final List<String> _iconAssets = [
@@ -481,19 +484,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final activeVarietasSnapshot = await activeVarietasRef.get();
 
       if (settings != null && mounted) {
-        // Load varietas - prioritaskan active_varietas jika ada
+        // Load varietas - HANYA dari active_varietas (multi-lokasi)
         if (activeVarietasSnapshot.exists &&
             activeVarietasSnapshot.value != null &&
             activeVarietasSnapshot.value.toString().isNotEmpty) {
-          _selectedVarietas = activeVarietasSnapshot.value.toString();
+          final varietasId = activeVarietasSnapshot.value.toString();
+          _selectedVarietas = _getVarietasDisplayName(varietasId);
+          print(
+            '✅ Initial load: varietas = \"$_selectedVarietas\" (ID: $varietasId)',
+          );
         } else {
-          // Jika tidak ada active_varietas, set ke empty (bukan default)
-          _selectedVarietas = settings['varietas'] ?? '';
+          // Tidak ada varietas aktif - set ke empty string
+          _selectedVarietas = '';
+          print('⚠️ Initial load: No active varietas, set to empty');
         }
 
         // Load config varietas dari Firestore hanya jika varietas ada
         if (_selectedVarietas.isNotEmpty) {
-          await _loadVarietasConfig(_selectedVarietas);
+          final varietasId = _selectedVarietas.toLowerCase().replaceAll(
+            ' ',
+            '_',
+          );
+          await _loadVarietasConfig(varietasId);
         }
 
         setState(() {
@@ -596,7 +608,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Sync threshold ke Wokwi
         await _syncAllThresholdsToWokwi();
 
-        // Setup real-time listener untuk notifikasi
+        // Setup real-time listener untuk notifikasi DAN varietas
+        // PENTING: Panggil setelah activeLocationId sudah di-set!
         _setupRealtimeListener();
       } else {
         // Jika belum ada settings, buat default settings
@@ -658,6 +671,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             final newActiveLocationId =
                 snapshot.data()?['active_location'] ?? 'lokasi_1';
 
+            final bool isFirstLoad = activeLocationId == null;
+
             // Jika lokasi berubah, refresh listener varietas
             if (newActiveLocationId != activeLocationId) {
               print(
@@ -668,6 +683,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Cancel dan re-setup listener varietas untuk lokasi baru
               _activeVarietasSubscription?.cancel();
               _setupVarietasListener();
+
+              // Jika ini first load, tampilkan log saja (bukan notification)
+              if (isFirstLoad) {
+                print('✅ Initial location loaded: $activeLocationId');
+                return; // Skip notification untuk first load
+              }
 
               // Reload data untuk lokasi baru
               _loadPlantingDate();
@@ -686,39 +707,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
 
     // Setup listener varietas untuk lokasi aktif
-    _setupVarietasListener();
+    // PASTIKAN activeLocationId sudah di-set sebelum panggil ini!
+    print('🔍 DEBUG: activeLocationId before setup = $activeLocationId');
+    if (activeLocationId != null) {
+      _setupVarietasListener();
+    } else {
+      print(
+        '⚠️ WARNING: activeLocationId is null, listener will be setup when location loads',
+      );
+    }
   }
 
   /// Setup listener untuk varietas di lokasi aktif
   void _setupVarietasListener() {
     // Listen to active_varietas changes/deletions (MULTI-LOKASI)
-    if (activeLocationId == null) return;
+    if (activeLocationId == null) {
+      print('⚠️ Cannot setup varietas listener: activeLocationId is null');
+      return;
+    }
+
+    print('🔔 Setting up varietas listener for location: $activeLocationId');
     final activeVarietasRef = FirebaseDatabase.instance.ref(
       'smartfarm/locations/$activeLocationId/active_varietas',
     );
 
     _activeVarietasSubscription = activeVarietasRef.onValue.listen(
       (event) {
-        if (!mounted) return;
+        print('📡 Varietas listener triggered!');
+        print('  → Snapshot exists: ${event.snapshot.exists}');
+        print('  → Snapshot value: ${event.snapshot.value}');
+        print('  → Current _selectedVarietas: "$_selectedVarietas"');
+
+        if (!mounted) {
+          print('  ⚠️ Widget not mounted, skipping update');
+          return;
+        }
 
         if (!event.snapshot.exists || event.snapshot.value == null) {
           // Varietas dihapus di Dashboard/Home
           print(
             '🗑️ Active varietas dihapus dari Dashboard, kosongkan di Settings',
           );
+          print('  → Old value: "$_selectedVarietas"');
 
           if (mounted) {
+            // Force reset to empty string dan regenerate key untuk force rebuild
             setState(() {
               _selectedVarietas = '';
               _waktuTanam = null;
+              _varietasWidgetKey = UniqueKey(); // Force rebuild UI
             });
+
+            print(
+              '  ✓ State updated: _selectedVarietas = "$_selectedVarietas"',
+            );
+            print('  ✓ Widget key regenerated untuk force UI rebuild');
+            print('  ✓ UI should now show: "Belum ada varietas yang dipilih"');
+
+            // Force immediate frame rebuild
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {}); // Trigger extra rebuild
+                print('  ✓ Post-frame rebuild triggered');
+              }
+            });
+
+            // Hapus varietas dari user settings di Firestore juga
+            if (_userId != null) {
+              _firestore
+                  .collection('users')
+                  .doc(_userId)
+                  .update({
+                    'settings.varietas': '',
+                    'active_varietas': FieldValue.delete(),
+                  })
+                  .then((_) {
+                    print('  ✓ Firestore user settings cleared');
+                  })
+                  .catchError((e) {
+                    print('  ❌ Error clearing Firestore: $e');
+                  });
+            }
 
             // Tampilkan notifikasi bahwa varietas telah dihapus
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('ℹ️ Varietas telah dihapus dari Dashboard'),
+                content: Text('🗑️ Varietas telah dihapus dari Dashboard'),
                 backgroundColor: Colors.orange,
-                duration: Duration(seconds: 2),
+                duration: Duration(seconds: 3),
               ),
             );
           }
@@ -734,14 +810,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
         } else {
           // Varietas berubah
-          final newVarietasId = event.snapshot.value.toString();
+          final newVarietasId = event.snapshot.value.toString().trim();
+
+          // Cek jika varietasId kosong atau 'null'
+          if (newVarietasId.isEmpty || newVarietasId == 'null') {
+            print(
+              '🗑️ Settings listener: terdeteksi varietas kosong/null dari RTDB',
+            );
+            if (mounted) {
+              setState(() {
+                _selectedVarietas = '';
+                _waktuTanam = null;
+                _varietasWidgetKey = UniqueKey(); // Force rebuild UI
+              });
+            }
+            print('  ✓ Widget key regenerated untuk force UI rebuild');
+            return;
+          }
 
           // Convert ID ke display name
           final displayName = _getVarietasDisplayName(newVarietasId);
 
-          if (newVarietasId != _selectedVarietas) {
+          // Bandingkan dengan display name yang sekarang
+          if (displayName != _selectedVarietas) {
             print(
-              '🔄 Active varietas berubah: $_selectedVarietas → $displayName ($newVarietasId)',
+              '🔄 Settings sync: varietas berubah dari "$_selectedVarietas" → "$displayName" (ID: $newVarietasId)',
             );
 
             setState(() {
@@ -814,9 +907,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _dbService.updateAmbangSuhu(_userId!, range.start, range.end);
     // Sync ke Wokwi threshold untuk varietas aktif
     if (_selectedVarietas.isNotEmpty) {
-      print('📡 Syncing to: smartfarm/threshold/$_selectedVarietas/suhu');
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+      print('📡 Syncing to: smartfarm/threshold/$varietasId/suhu');
       await FirebaseDatabase.instance
-          .ref('smartfarm/threshold/$_selectedVarietas/suhu')
+          .ref('smartfarm/threshold/$varietasId/suhu')
           .set({'min': range.start, 'max': range.end});
       print('✅ Suhu synced to Wokwi');
     }
@@ -834,11 +928,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     // Sync ke Wokwi threshold untuk varietas aktif
     if (_selectedVarietas.isNotEmpty) {
-      print(
-        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/kelembapan_udara',
-      );
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+      print('📡 Syncing to: smartfarm/threshold/$varietasId/kelembapan_udara');
       await FirebaseDatabase.instance
-          .ref('smartfarm/threshold/$_selectedVarietas/kelembapan_udara')
+          .ref('smartfarm/threshold/$varietasId/kelembapan_udara')
           .set({'min': range.start, 'max': range.end});
       print('✅ Kelembapan Udara synced to Wokwi');
     }
@@ -856,11 +949,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     // Sync ke Wokwi threshold untuk varietas aktif
     if (_selectedVarietas.isNotEmpty) {
-      print(
-        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/kelembapan_tanah',
-      );
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+      print('📡 Syncing to: smartfarm/threshold/$varietasId/kelembapan_tanah');
       await FirebaseDatabase.instance
-          .ref('smartfarm/threshold/$_selectedVarietas/kelembapan_tanah')
+          .ref('smartfarm/threshold/$varietasId/kelembapan_tanah')
           .set({'min': range.start, 'max': range.end});
       print('✅ Kelembapan Tanah synced to Wokwi');
     }
@@ -874,9 +966,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _dbService.updateAmbangPhTanah(_userId!, range.start, range.end);
     // Sync ke Wokwi threshold untuk varietas aktif
     if (_selectedVarietas.isNotEmpty) {
-      print('📡 Syncing to: smartfarm/threshold/$_selectedVarietas/ph_tanah');
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+      print('📡 Syncing to: smartfarm/threshold/$varietasId/ph_tanah');
       await FirebaseDatabase.instance
-          .ref('smartfarm/threshold/$_selectedVarietas/ph_tanah')
+          .ref('smartfarm/threshold/$varietasId/ph_tanah')
           .set({'min': range.start, 'max': range.end});
       print('✅ pH Tanah synced to Wokwi');
     }
@@ -894,11 +987,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     // Sync ke Wokwi threshold untuk varietas aktif
     if (_selectedVarietas.isNotEmpty) {
-      print(
-        '📡 Syncing to: smartfarm/threshold/$_selectedVarietas/intensitas_cahaya',
-      );
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+      print('📡 Syncing to: smartfarm/threshold/$varietasId/intensitas_cahaya');
       await FirebaseDatabase.instance
-          .ref('smartfarm/threshold/$_selectedVarietas/intensitas_cahaya')
+          .ref('smartfarm/threshold/$varietasId/intensitas_cahaya')
           .set({'min': range.start, 'max': range.end});
       print('✅ Intensitas Cahaya synced to Wokwi');
     }
@@ -909,9 +1001,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_selectedVarietas.isEmpty) return;
 
     try {
+      // Konversi display name ke varietasId (lowercase dengan underscore)
+      final varietasId = _selectedVarietas.toLowerCase().replaceAll(' ', '_');
+
       // Sync semua nilai threshold (min/max) ke path Wokwi
       final thresholdRef = FirebaseDatabase.instance.ref(
-        'smartfarm/threshold/$_selectedVarietas',
+        'smartfarm/threshold/$varietasId',
       );
 
       await thresholdRef.set({
@@ -931,7 +1026,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       });
 
-      print('✅ All thresholds synced to Wokwi for $_selectedVarietas');
+      print(
+        '✅ All thresholds synced to Wokwi for $varietasId (from display: $_selectedVarietas)',
+      );
     } catch (e) {
       print('❌ Error syncing thresholds to Wokwi: $e');
     }
@@ -1070,6 +1167,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             // Varietas yang ditanam saat ini
             Card(
+              key:
+                  _varietasWidgetKey, // Force rebuild saat varietas berubah/dihapus
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -1206,9 +1305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 });
 
                             // 3. Update active_varietas global untuk ESP32
-                            await FirebaseDatabase.instance
-                                .ref('smartfarm/active_varietas')
-                                .set(varietasId);
+
 
                             // 3b. 🆕 MULTI-LOKASI: Update active_varietas PER LOKASI
                             // Ambil active_location dari Firestore user profile

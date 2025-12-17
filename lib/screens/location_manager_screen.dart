@@ -63,6 +63,9 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
     }
   }
 
+// PATCH untuk location_manager_screen.dart
+  // Ganti function _setActiveLocation() dengan yang ini:
+
   Future<void> _setActiveLocation(dynamic locationIdOrMap) async {
     if (user == null) return;
 
@@ -76,9 +79,15 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
     }
 
     try {
+      // 1. Save ke Firestore (untuk Flutter)
       await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
         'active_location': locationId,
       }, SetOptions(merge: true));
+
+      // 🆕 2. SYNC KE RTDB GLOBAL (untuk ESP32 baca!)
+      await FirebaseDatabase.instance
+          .ref('smartfarm/active_device_location')
+          .set(locationId);
 
       setState(() {
         activeLocationId = locationId;
@@ -86,11 +95,62 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lokasi berhasil diaktifkan')),
+          SnackBar(
+            content: Text('✅ Lokasi $locationId diaktifkan & di-sync ke ESP32'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       print('Error setting active location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Gagal mengaktifkan lokasi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+ 
+
+  /// Auto-generate location ID: lokasi_1, lokasi_2, lokasi_3, dst
+  Future<String> _generateLocationId() async {
+    try {
+      // 1. Ambil semua lokasi yang ada di RTDB
+      final locationsSnapshot = await FirebaseDatabase.instance
+          .ref('smartfarm/locations')
+          .get();
+
+      if (!locationsSnapshot.exists) {
+        return 'lokasi_1'; // Lokasi pertama
+      }
+
+      // 2. Cari nomor tertinggi dari lokasi yang ada
+      final locations = locationsSnapshot.children;
+      int maxNumber = 0;
+
+      for (var location in locations) {
+        final key = location.key ?? '';
+        // Extract number dari "lokasi_3" -> 3
+        if (key.startsWith('lokasi_')) {
+          final numStr = key.replaceFirst('lokasi_', '');
+          final num = int.tryParse(numStr) ?? 0;
+          if (num > maxNumber) {
+            maxNumber = num;
+          }
+        }
+      }
+
+      // 3. Return lokasi_N+1
+      final newId = 'lokasi_${maxNumber + 1}';
+      print('🏗️ Generated new location ID: $newId');
+      return newId;
+    } catch (e) {
+      print('Error generating location ID: $e');
+      // Fallback: gunakan timestamp dengan prefix lokasi_
+      return 'lokasi_${DateTime.now().millisecondsSinceEpoch}';
     }
   }
 
@@ -212,8 +272,9 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
                       return;
                     }
 
-                    final locationId = DateTime.now().millisecondsSinceEpoch
-                        .toString();
+                    // 🆕 AUTO-GENERATE: lokasi_1, lokasi_2, dst
+                    final locationId = await _generateLocationId();
+                    print('✅ Creating new location: $locationId');
                     final rtdbRef = FirebaseDatabase.instance.ref(
                       'smartfarm/locations/$locationId',
                     );
@@ -223,9 +284,9 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
                       'address': address ?? 'Unknown Location',
                       'latitude': latitude,
                       'longitude': longitude,
-                      'active_varietas': 'cabai_merah',
-                      'waktu_tanam': DateTime.now().millisecondsSinceEpoch,
-                      'mode_otomatis': false,
+                      'active_varietas':
+                          '', // ✅ Kosong, tunggu user pilih varietas
+                      'mode_otomatis': true, // ✅ Default ON
                     });
 
                     final updatedLocs = [

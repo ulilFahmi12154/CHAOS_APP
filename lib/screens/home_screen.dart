@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -98,45 +99,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final RealtimeDbService _dbService = RealtimeDbService();
   String? activeVarietas;
   bool pompaStatus = false;
-  String _userLocation = 'Loading...';
 
   // MULTI-LOKASI
   String activeLocationId = 'lokasi_1'; // Default
   String activeLocationName = 'Lokasi 1';
   List<Map<String, String>> userLocations = [];
 
-  /// Load nama lokasi dari Firebase (tidak perlu GPS/Weather API lagi)
-  Future<void> _fetchLocationAndWeather() async {
-    // Fungsi ini tidak perlu lagi karena nama lokasi sudah di-load via _loadUserLocations()
-    // Kept for backward compatibility
-  }
-
-  // Get user location from Firebase
-  Future<void> _loadUserLocation() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final snapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        if (snapshot.exists && mounted) {
-          final data = snapshot.data();
-          setState(() {
-            _userLocation = data?['location'] ?? 'Unknown Location';
-          });
-        }
-      } catch (e) {
-        setState(() {
-          _userLocation = 'Unknown Location';
-        });
-      }
-    } else {
-      setState(() {
-        _userLocation = 'Not Logged In';
-      });
-    }
-  }
+  // Listener untuk perubahan lokasi aktif
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
 
   // Ambang batas dari settings (default values)
   double suhuMin = 22, suhuMax = 28;
@@ -158,8 +128,41 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUserLocations(); // Load lokasi user dulu
     _loadActiveVarietas();
     _loadUserSettings();
-    _loadUserLocation();
-    _fetchLocationAndWeather();
+    _setupLocationListener(); // Setup listener untuk perubahan lokasi
+  }
+
+  /// Setup listener untuk perubahan lokasi aktif dari Firestore
+  void _setupLocationListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _locationSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final newLocationId =
+                snapshot.data()?['active_location'] ?? 'lokasi_1';
+            if (newLocationId != activeLocationId) {
+              print(
+                '🔄 HomeScreen: Lokasi berubah dari $activeLocationId ke $newLocationId',
+              );
+              setState(() {
+                activeLocationId = newLocationId;
+              });
+              // Reload data untuk lokasi baru
+              _loadUserLocations();
+              _loadActiveVarietas();
+            }
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _locationSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -170,7 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUserLocations(); // Reload lokasi dulu
     _loadActiveVarietas();
     _loadUserSettings();
-    _fetchLocationAndWeather();
   }
 
   // Helper: Generate path Firebase dengan lokasi aktif
@@ -273,7 +275,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Reload data untuk lokasi baru
       _loadActiveVarietas();
-      _fetchLocationAndWeather();
     } catch (e) {
       print('Error switching location: $e');
     }
@@ -1109,49 +1110,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     IconButton(
                       onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Hapus Varietas'),
-                            content: const Text(
-                              'Yakin ingin menghapus varietas yang sedang dipilih?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Batal'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text(
-                                  'Hapus',
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          final user = FirebaseAuth.instance.currentUser;
-                          if (user != null) {
-                            final db = FirebaseDatabase.instance.ref();
-                            await db
-                                .child('users/${user.uid}/active_varietas')
-                                .remove();
-                            await db.child('smartfarm/active_varietas').set("");
-                            if (mounted) {
-                              setState(() {
-                                activeVarietas = null;
-                              });
-                            }
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Varietas dihapus.'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        }
+                        print('🔴 DELETE ICON BUTTON PRESSED!');
+                        _showDeleteConfirmation(context);
                       },
                       icon: const Icon(Icons.delete, color: Colors.red),
                       tooltip: 'Hapus Varietas',
@@ -2372,8 +2332,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () {
-                _deleteActiveVarietas();
+                print('🔴 DELETE BUTTON PRESSED!');
                 Navigator.pop(context);
+                _deleteActiveVarietas();
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Hapus'),
@@ -2385,43 +2346,74 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _deleteActiveVarietas() async {
+    print('🔴 DELETE FUNCTION CALLED!');
+    print('  → activeLocationId: $activeLocationId');
+    print('  → activeVarietas: $activeVarietas');
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User tidak login');
 
       final db = FirebaseDatabase.instance.ref();
 
+      print('🗑️ Menghapus varietas dari lokasi: $activeLocationId');
+      print('  → Varietas: $activeVarietas');
+
       // MULTI-LOKASI: Hapus varietas dari path per-lokasi
       // 1. Hapus dari lokasi aktif (UTAMA)
       await db
           .child('smartfarm/locations/$activeLocationId/active_varietas')
           .remove();
+      print('  ✓ active_varietas dihapus');
 
       // 2. Hapus waktu tanam juga
       await db
           .child('smartfarm/locations/$activeLocationId/waktu_tanam')
           .remove();
+      print('  ✓ waktu_tanam dihapus');
 
-      // 3. Hapus dari path global Wokwi agar ESP32 berhenti membaca
-      await db.child('smartfarm/active_varietas').set("");
+      // 3. Hapus sensors data untuk varietas tersebut
+      if (activeVarietas != null && activeVarietas!.isNotEmpty) {
+        await db
+            .child(
+              'smartfarm/locations/$activeLocationId/sensors/$activeVarietas',
+            )
+            .remove();
+        print('  ✓ sensors data dihapus');
+      }
+
+      // 4. Hapus dari path global Wokwi agar ESP32 berhenti membaca
+      // 1. Set empty string untuk trigger ESP32 deletion detection
+    await db
+    .child('smartfarm/locations/$activeLocationId/active_varietas')
+    .set('');  // ← UBAH dari .remove() jadi .set('')
+print('  ✓ active_varietas di-reset (ESP32 akan detect deletion)');
+
+      print('✅ Semua path berhasil dihapus!');
 
       setState(() {
         activeVarietas = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '✅ Varietas dihapus dari lokasi ini. ESP32 akan berhenti membaca.',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '✅ Varietas dihapus! Settings akan otomatis update.',
+              style: TextStyle(fontSize: 14),
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
           ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      print('❌ Error menghapus varietas: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

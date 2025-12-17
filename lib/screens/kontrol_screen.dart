@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../utils/plant_utils.dart';
 
 class KontrolScreen extends StatefulWidget {
@@ -22,15 +23,55 @@ class _KontrolScreenState extends State<KontrolScreen> {
   final _firestore = FirebaseFirestore.instance;
   int? waktuTanamMillis;
 
+  // Multi-lokasi
+  String activeLocationId = 'lokasi_1';
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
+
   @override
   void initState() {
     super.initState();
-    _loadActiveVarietas();
+    _setupLocationListener();
     _loadInitialWaktuTanam();
     _setupWaktuTanamListener();
   }
 
-  /// Load initial waktu_tanam data once
+  @override
+  void dispose() {
+    _locationSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Setup listener untuk perubahan lokasi aktif
+  void _setupLocationListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _locationSubscription = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final newLocationId =
+                snapshot.data()?['active_location'] ?? 'lokasi_1';
+            if (newLocationId != activeLocationId) {
+              print('📍 KONTROL: Location changed to $newLocationId');
+              setState(() {
+                activeLocationId = newLocationId;
+              });
+              // Reload varietas dan waktu tanam untuk lokasi baru
+              _loadActiveVarietas();
+              _setupWaktuTanamListener();
+            } else if (activeLocationId == newLocationId &&
+                activeVarietas == null) {
+              // First load
+              _loadActiveVarietas();
+            }
+          }
+        });
+  }
+
+  /// Load initial waktu_tanam data once from RTDB per location
   Future<void> _loadInitialWaktuTanam() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -39,35 +80,43 @@ class _KontrolScreenState extends State<KontrolScreen> {
     }
 
     try {
-      print('🔄 KONTROL: Loading initial waktu_tanam for user: ${user.uid}');
-      final doc = await _firestore.collection('users').doc(user.uid).get();
+      // Get active location first
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final locationId = userDoc.data()?['active_location'] ?? 'lokasi_1';
+        setState(() {
+          activeLocationId = locationId;
+        });
+      }
 
-      if (doc.exists && mounted) {
-        final data = doc.data();
-        print('📊 KONTROL: Initial document data: $data');
+      print(
+        '🔄 KONTROL: Loading initial waktu_tanam from location: $activeLocationId',
+      );
+      final snapshot = await FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .get();
 
-        if (data != null && data.containsKey('waktu_tanam')) {
-          final newWaktuTanam = data['waktu_tanam'] as int?;
-          print('✅ KONTROL: Initial waktu_tanam = $newWaktuTanam');
+      if (snapshot.exists && mounted) {
+        final newWaktuTanam = snapshot.value as int?;
+        print('✅ KONTROL: Initial waktu_tanam = $newWaktuTanam');
 
-          setState(() {
-            waktuTanamMillis = newWaktuTanam;
-          });
+        setState(() {
+          waktuTanamMillis = newWaktuTanam;
+        });
 
-          if (newWaktuTanam != null) {
-            final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
-            print('📅 KONTROL: Initial waktu tanam date: $date');
-          }
-        } else {
-          print('⚠️ KONTROL: No waktu_tanam field in initial load');
+        if (newWaktuTanam != null) {
+          final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
+          print('📅 KONTROL: Initial waktu tanam date: $date');
         }
+      } else {
+        print('⚠️ KONTROL: No waktu_tanam found');
       }
     } catch (e) {
       print('❌ KONTROL: Error loading initial waktu_tanam: $e');
     }
   }
 
-  /// Setup real-time listener for waktu_tanam from Firestore
+  /// Setup real-time listener for waktu_tanam from RTDB per location
   void _setupWaktuTanamListener() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -75,56 +124,64 @@ class _KontrolScreenState extends State<KontrolScreen> {
       return;
     }
 
-    print('🔄 KONTROL: Setting up waktu_tanam listener for user: ${user.uid}');
+    print(
+      '🔄 KONTROL: Setting up waktu_tanam listener for location: $activeLocationId',
+    );
 
-    // Listen to real-time changes in waktu_tanam
-    _firestore.collection('users').doc(user.uid).snapshots().listen((doc) {
-      print('📡 KONTROL: Received Firestore snapshot');
+    // Listen to real-time changes in waktu_tanam per location
+    FirebaseDatabase.instance
+        .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+        .onValue
+        .listen((event) {
+          print('📡 KONTROL: Received RTDB snapshot for waktu_tanam');
 
-      if (mounted && doc.exists) {
-        final data = doc.data();
-        print('📊 KONTROL: Document data: $data');
+          if (mounted) {
+            if (event.snapshot.exists && event.snapshot.value != null) {
+              final newWaktuTanam = event.snapshot.value as int?;
+              print('✅ KONTROL: Found waktu_tanam = $newWaktuTanam');
 
-        if (data != null && data.containsKey('waktu_tanam')) {
-          final newWaktuTanam = data['waktu_tanam'] as int?;
-          print('✅ KONTROL: Found waktu_tanam = $newWaktuTanam');
+              setState(() {
+                waktuTanamMillis = newWaktuTanam;
+              });
 
-          setState(() {
-            waktuTanamMillis = newWaktuTanam;
-          });
-
-          if (newWaktuTanam != null) {
-            final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
-            print('📅 KONTROL: Waktu tanam date: $date');
+              if (newWaktuTanam != null) {
+                final date = DateTime.fromMillisecondsSinceEpoch(newWaktuTanam);
+                print('📅 KONTROL: Waktu tanam date: $date');
+              }
+            } else {
+              // Field deleted, reset to null
+              print('⚠️ KONTROL: waktu_tanam not found, setting to null');
+              setState(() {
+                waktuTanamMillis = null;
+              });
+            }
           }
-        } else {
-          // Field deleted, reset to null
-          print('⚠️ KONTROL: waktu_tanam field not found, setting to null');
-          setState(() {
-            waktuTanamMillis = null;
-          });
-        }
-      } else {
-        print('⚠️ KONTROL: Document does not exist or widget not mounted');
-      }
-    });
+        });
   }
 
   Future<void> _loadActiveVarietas() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    db.child('users/${user.uid}/active_varietas').onValue.listen((event) {
-      if (event.snapshot.exists) {
-        setState(() {
-          activeVarietas = event.snapshot.value.toString();
+    // MULTI-LOKASI: Load varietas dari lokasi aktif
+    print('🔄 KONTROL: Loading varietas from location: $activeLocationId');
+    db
+        .child('smartfarm/locations/$activeLocationId/active_varietas')
+        .onValue
+        .listen((event) {
+          if (event.snapshot.exists && mounted) {
+            final varietas = event.snapshot.value.toString();
+            print('✅ KONTROL: Varietas loaded: $varietas');
+            setState(() {
+              activeVarietas = varietas;
+            });
+          } else if (mounted) {
+            print('⚠️ KONTROL: No varietas found');
+            setState(() {
+              activeVarietas = null;
+            });
+          }
         });
-      } else {
-        setState(() {
-          activeVarietas = null;
-        });
-      }
-    });
   }
 
   Future<void> _toggleMode(bool value) async {
@@ -181,7 +238,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
       await db.child(commandPath2).set(commandValue);
 
       // Path 3: UPDATE SENSOR STATUS LANGSUNG (tidak tunggu Wokwi)
-      final sensorPath = 'smartfarm/sensors/$activeVarietas/pompa';
+      // MULTI-LOKASI: Update sensor di lokasi aktif
+      final sensorPath =
+          'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa';
       print(
         'DEBUG: Updating sensor status: $sensorPath with value: $statusValue',
       );
