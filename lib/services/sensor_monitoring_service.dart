@@ -150,10 +150,10 @@ class SensorMonitoringService {
     final sensorRef = FirebaseDatabase.instance
         .ref()
         .child('smartfarm')
-        .child('sensor_data')
+        .child('sensors')
         .child(_varietas!);
 
-    print('👂 Listening to sensor data at: smartfarm/sensor_data/$_varietas');
+    print('👂 Listening to sensor data at: smartfarm/sensors/$_varietas');
 
     _sensorSubscription = sensorRef.onValue.listen((event) {
       if (!event.snapshot.exists) return;
@@ -168,6 +168,9 @@ class SensorMonitoringService {
   /// Check sensor values against thresholds
   void _checkSensorValues(Map<String, dynamic> sensorData) {
     if (!_notificationEnabled || !_criticalNotificationEnabled) return;
+
+    print('📊 Checking sensor values: $sensorData');
+    print('🎯 Against thresholds: $_thresholds');
 
     // Check Suhu
     if (sensorData['suhu'] != null && _thresholds['suhu_min'] != null) {
@@ -213,9 +216,9 @@ class SensorMonitoringService {
     }
 
     // Check Kelembapan Udara
-    if (sensorData['kelembapan'] != null &&
+    if (sensorData['kelembapan_udara'] != null &&
         _thresholds['kelembapan_udara_min'] != null) {
-      final humidity = _parseDouble(sensorData['kelembapan']);
+      final humidity = _parseDouble(sensorData['kelembapan_udara']);
       final humMin = _parseDouble(_thresholds['kelembapan_udara_min']);
       final humMax = _parseDouble(_thresholds['kelembapan_udara_max']);
 
@@ -255,9 +258,9 @@ class SensorMonitoringService {
     }
 
     // Check Kelembapan Tanah
-    if (sensorData['kelembapan_tanah'] != null &&
+    if (sensorData['kelembaban_tanah'] != null &&
         _thresholds['kelembapan_tanah_min'] != null) {
-      final soilMoisture = _parseDouble(sensorData['kelembapan_tanah']);
+      final soilMoisture = _parseDouble(sensorData['kelembaban_tanah']);
       final soilMin = _parseDouble(_thresholds['kelembapan_tanah_min']);
       final soilMax = _parseDouble(_thresholds['kelembapan_tanah_max']);
 
