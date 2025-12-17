@@ -132,16 +132,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadVarietasList() async {
     try {
       final snapshot = await _firestore.collection('varietas_config').get();
+      print('📦 Total documents in Firestore: ${snapshot.docs.length}');
+
       if (snapshot.docs.isNotEmpty && mounted) {
         setState(() {
+          // Filter dan map dokumen
           _varietasList = snapshot.docs
-              .map((doc) => doc['nama'] as String? ?? doc.id)
+              .where((doc) {
+                // Filter out dokumen yang bukan varietas (seperti _seeded_flag)
+                return !doc.id.startsWith('_');
+              })
+              .map((doc) {
+                print('📄 Processing doc: ${doc.id}');
+                // Cek apakah ada field 'nama', jika tidak gunakan doc.id
+                final nama = doc.data()['nama'] as String?;
+                if (nama != null && nama.isNotEmpty) {
+                  print('  ✓ Using nama field: $nama');
+                  return nama;
+                }
+                // Format doc.id menjadi display name (crv_211 -> Crv 211)
+                final displayName = doc.id
+                    .replaceAll('_', ' ')
+                    .split(' ')
+                    .map((word) => word[0].toUpperCase() + word.substring(1))
+                    .join(' ');
+                print('  ✓ Using formatted doc.id: $displayName');
+                return displayName;
+              })
               .toList();
+
+          // Sort alphabetically untuk tampilan lebih rapi
+          _varietasList.sort();
         });
+        print('✅ Loaded ${_varietasList.length} varietas: $_varietasList');
+      } else {
+        // Fallback: gunakan list default jika Firestore benar-benar kosong
+        setState(() {
+          _varietasList = ['Bara', 'Juwiring', 'Patra 3'];
+        });
+        print('⚠️ No varietas in Firestore, using default list');
       }
     } catch (e) {
       // ignore: avoid_print
-      print('Error loading varietas list: $e');
+      print('❌ Error loading varietas list: $e');
+      // Fallback: gunakan list default jika error
+      if (mounted) {
+        setState(() {
+          _varietasList = ['Bara', 'Juwiring', 'Patra 3'];
+        });
+      }
     }
   }
 
@@ -1500,6 +1539,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<String?> _showVarietasMenu(BuildContext context) async {
+    // Validasi: pastikan ada varietas yang tersedia
+    if (_varietasList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada varietas yang tersedia'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return null;
+    }
+
     final RenderBox button =
         _varietasFieldKey.currentContext!.findRenderObject() as RenderBox;
     final RenderBox overlay =
@@ -1536,7 +1586,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         maxWidth: button.size.width,
       ),
       items: _varietasList.map((v) {
-        final bool isSelected = v == _selectedVarietas;
+        // Konversi display name ke ID untuk perbandingan
+        final varietasId = v.toLowerCase().replaceAll(' ', '_');
+        final bool isSelected = varietasId == _selectedVarietas;
         return PopupMenuItem<String>(
           value: v,
           height: 52,
