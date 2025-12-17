@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Stream subscription untuk real-time updates
   StreamSubscription<Map<String, dynamic>?>? _settingsSubscription;
   StreamSubscription<DatabaseEvent>? _activeVarietasSubscription;
+  StreamSubscription<DocumentSnapshot>? _activeLocationSubscription;
 
   // Nilai ambang batas (min/max range yang bisa di-edit user via RangeSlider)
   // Ini adalah nilai CUSTOM user, bukan default dari Firestore
@@ -55,6 +56,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Planting date
   DateTime? _waktuTanam;
+
+  // Lokasi aktif (multi-lokasi)
+  String? activeLocationId;
 
   // Asset icon paths to verify and precache
   final List<String> _iconAssets = [
@@ -130,29 +134,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Load list varietas dari Firestore
   Future<void> _loadVarietasList() async {
     try {
+      print('🌱 Loading varietas list from Firestore...');
       final snapshot = await _firestore.collection('varietas_config').get();
+      print('📦 Found ${snapshot.docs.length} varietas documents');
+
       if (snapshot.docs.isNotEmpty && mounted) {
+        final varietasList = <String>[];
+
+        for (final doc in snapshot.docs) {
+          // Skip dokumen yang bukan varietas (seperti _seeded_flag)
+          if (doc.id.startsWith('_')) {
+            print('  ⏩ Skipping system document: ${doc.id}');
+            continue;
+          }
+
+          try {
+            final data = doc.data();
+            final nama = data['nama'] as String? ?? doc.id;
+            print('  - ${doc.id}: $nama');
+            varietasList.add(nama);
+          } catch (e) {
+            print('  ⚠️ Error reading ${doc.id}: $e');
+            // Fallback: gunakan doc.id sebagai nama
+            varietasList.add(doc.id);
+          }
+        }
+
         setState(() {
-          _varietasList = snapshot.docs
-              .map((doc) => doc['nama'] as String? ?? doc.id)
-              .toList();
+          _varietasList = varietasList;
         });
+        print('✅ Varietas list loaded: $_varietasList');
+      } else {
+        print('⚠️ No varietas found or widget not mounted');
       }
     } catch (e) {
       // ignore: avoid_print
-      print('Error loading varietas list: $e');
+      print('❌ Error loading varietas list: $e');
     }
   }
 
-  /// Load planting date from Firestore
+  /// Load planting date from RTDB per lokasi aktif
   Future<void> _loadPlantingDate() async {
     if (_userId == null) return;
 
     try {
-      final doc = await _firestore.collection('users').doc(_userId).get();
-      if (doc.exists && mounted) {
-        final data = doc.data();
-        final waktuTanamMs = data?['waktu_tanam'] as int?;
+      // Get active location dari user profile
+      final userDoc = await _firestore.collection('users').doc(_userId).get();
+      final activeLocationId = userDoc.exists
+          ? (userDoc.data()?['active_location'] ?? 'lokasi_1')
+          : 'lokasi_1';
+
+      // Load waktu tanam dari lokasi aktif di RTDB
+      final snapshot = await FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .get();
+
+      if (snapshot.exists && mounted) {
+        final waktuTanamMs = snapshot.value as int?;
         if (waktuTanamMs != null) {
           setState(() {
             _waktuTanam = DateTime.fromMillisecondsSinceEpoch(waktuTanamMs);
@@ -190,10 +228,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (picked != null && mounted) {
       try {
-        // Save to Firestore
-        await _firestore.collection('users').doc(_userId).update({
-          'waktu_tanam': picked.millisecondsSinceEpoch,
-        });
+        // Get active location dari user profile
+        final userDoc = await _firestore.collection('users').doc(_userId).get();
+        final activeLocationId = userDoc.exists
+            ? (userDoc.data()?['active_location'] ?? 'lokasi_1')
+            : 'lokasi_1';
+
+        // Save waktu tanam ke lokasi aktif di RTDB
+        await FirebaseDatabase.instance
+            .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+            .set(picked.millisecondsSinceEpoch);
 
         setState(() {
           _waktuTanam = picked;
@@ -201,8 +245,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Waktu tanam berhasil disimpan'),
+            SnackBar(
+              content: Text(
+                '✅ Waktu tanam berhasil disimpan untuk lokasi aktif',
+              ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
             ),
@@ -369,9 +415,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Load settings dari Firebase (one-time untuk initial load)
       final settings = await _dbService.getUserSettings(_userId!);
 
-      // Juga cek active_varietas untuk sinkronisasi dengan home screen
+      // Ambil activeLocationId dari user profile (Firestore)
+      final userDoc = await _firestore.collection('users').doc(_userId).get();
+      activeLocationId = userDoc.exists
+          ? (userDoc.data()?['active_location'] ?? 'lokasi_1')
+          : 'lokasi_1';
+
+      // MULTI-LOKASI: Cek active_varietas dari lokasi aktif
       final activeVarietasRef = FirebaseDatabase.instance.ref(
-        'users/$_userId/active_varietas',
+        'smartfarm/locations/$activeLocationId/active_varietas',
       );
       final activeVarietasSnapshot = await activeVarietasRef.get();
 
@@ -543,9 +595,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         );
 
-    // Listen to active_varietas changes/deletions
+    // Listen to active_location changes from Firestore
+    _activeLocationSubscription = _firestore
+        .collection('users')
+        .doc(_userId)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            final newActiveLocationId =
+                snapshot.data()?['active_location'] ?? 'lokasi_1';
+
+            // Jika lokasi berubah, refresh listener varietas
+            if (newActiveLocationId != activeLocationId) {
+              print(
+                '📍 Lokasi berubah: $activeLocationId → $newActiveLocationId',
+              );
+              activeLocationId = newActiveLocationId;
+
+              // Cancel dan re-setup listener varietas untuk lokasi baru
+              _activeVarietasSubscription?.cancel();
+              _setupVarietasListener();
+
+              // Reload data untuk lokasi baru
+              _loadPlantingDate();
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('📍 Lokasi aktif berubah'),
+                    backgroundColor: Colors.blue,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            }
+          }
+        });
+
+    // Setup listener varietas untuk lokasi aktif
+    _setupVarietasListener();
+  }
+
+  /// Setup listener untuk varietas di lokasi aktif
+  void _setupVarietasListener() {
+    // Listen to active_varietas changes/deletions (MULTI-LOKASI)
+    if (activeLocationId == null) return;
     final activeVarietasRef = FirebaseDatabase.instance.ref(
-      'users/$_userId/active_varietas',
+      'smartfarm/locations/$activeLocationId/active_varietas',
     );
 
     _activeVarietasSubscription = activeVarietasRef.onValue.listen(
@@ -553,39 +649,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (!mounted) return;
 
         if (!event.snapshot.exists || event.snapshot.value == null) {
-          // Varietas dihapus di Dashboard
-          print('🗑️ Active varietas dihapus, set ke empty');
+          // Varietas dihapus di Dashboard/Home
+          print(
+            '🗑️ Active varietas dihapus dari Dashboard, kosongkan di Settings',
+          );
 
-          setState(() {
-            _selectedVarietas = ''; // Kosongkan, sama seperti di Dashboard
-            _waktuTanam = null; // Reset waktu tanam juga
-          });
+          if (mounted) {
+            setState(() {
+              _selectedVarietas = '';
+              _waktuTanam = null;
+            });
 
-          // Hapus waktu_tanam dari Firestore
-          if (_userId != null) {
-            _firestore
-                .collection('users')
-                .doc(_userId)
-                .update({'waktu_tanam': FieldValue.delete()})
+            // Tampilkan notifikasi bahwa varietas telah dihapus
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('ℹ️ Varietas telah dihapus dari Dashboard'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          // Hapus waktu_tanam dari RTDB per lokasi aktif
+          if (activeLocationId != null) {
+            FirebaseDatabase.instance
+                .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+                .remove()
                 .catchError((e) {
                   print('Error deleting waktu_tanam: $e');
                 });
           }
         } else {
           // Varietas berubah
-          final newVarietas = event.snapshot.value.toString();
+          final newVarietasId = event.snapshot.value.toString();
 
-          if (newVarietas != _selectedVarietas) {
+          // Convert ID ke display name
+          final displayName = _getVarietasDisplayName(newVarietasId);
+
+          if (newVarietasId != _selectedVarietas) {
             print(
-              '🔄 Active varietas berubah: $_selectedVarietas → $newVarietas',
+              '🔄 Active varietas berubah: $_selectedVarietas → $displayName ($newVarietasId)',
             );
 
             setState(() {
-              _selectedVarietas = newVarietas;
+              _selectedVarietas = displayName;
             });
 
             // Load config varietas baru
-            _loadVarietasConfig(newVarietas);
+            _loadVarietasConfig(newVarietasId);
           }
         }
       },
@@ -600,6 +711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Cancel subscription saat widget di-dispose
     _settingsSubscription?.cancel();
     _activeVarietasSubscription?.cancel();
+    _activeLocationSubscription?.cancel();
     super.dispose();
   }
 
@@ -842,6 +954,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 20),
+            // 🆕 MULTI-LOKASI: Menu Kelola Lokasi
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 2,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.pushNamed(context, '/locations');
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.location_on,
+                          color: Colors.green.shade700,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Kelola Lokasi',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Atur dan kelola multiple lokasi greenhouse',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.grey.shade400,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             // Varietas yang ditanam saat ini
             Card(
               shape: RoundedRectangleBorder(
@@ -882,6 +1055,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       key: _varietasFieldKey,
                       borderRadius: BorderRadius.circular(12),
                       onTap: () async {
+                        // Check if varietas list is loaded
+                        if (_varietasList.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Loading varietas list...'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                          // Try to reload
+                          await _loadVarietasList();
+                          if (_varietasList.isEmpty) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Tidak ada varietas tersedia'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        }
+
                         final selected = await _showVarietasMenu(context);
                         if (selected != null) {
                           // Konversi nama varietas ke ID (lowercase dengan underscore)
@@ -961,11 +1157,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 .ref('smartfarm/active_varietas')
                                 .set(varietasId);
 
+                            // 3b. 🆕 MULTI-LOKASI: Update active_varietas PER LOKASI
+                            // Ambil active_location dari Firestore user profile
+                            final userDoc = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(_userId)
+                                .get();
+                            final activeLocationId = userDoc.exists
+                                ? (userDoc.data()?['active_location'] ??
+                                      'lokasi_1')
+                                : 'lokasi_1';
+
+                            // Update varietas untuk lokasi aktif
+                            await FirebaseDatabase.instance
+                                .ref(
+                                  'smartfarm/locations/$activeLocationId/active_varietas',
+                                )
+                                .set(varietasId);
+                            print(
+                              '📍 Updated varietas for location: $activeLocationId → $varietasId',
+                            );
+
                             // 4. Load config ke UI
                             await _loadVarietasConfig(varietasId);
 
                             // 5. Update user settings
-                            setState(() => _selectedVarietas = varietasId);
+                            setState(() => _selectedVarietas = selected);
                             await _updateVarietas(varietasId);
 
                             // 6. Sync threshold values ke Wokwi
@@ -1457,6 +1674,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<String?> _showVarietasMenu(BuildContext context) async {
+    print('📋 Opening varietas menu with ${_varietasList.length} items');
+
+    if (_varietasList.isEmpty) {
+      print('⚠️ Cannot show menu: varietas list is empty');
+      return null;
+    }
+
     final RenderBox button =
         _varietasFieldKey.currentContext!.findRenderObject() as RenderBox;
     final RenderBox overlay =

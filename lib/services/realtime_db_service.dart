@@ -4,18 +4,30 @@ import 'package:firebase_database/firebase_database.dart';
 class RealtimeDbService {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
+  /// MULTI-LOKASI: Generate path dengan lokasi (default: smartfarm/sensors untuk backward compatibility)
+  String _sensorPath(String varietas, {String? locationId}) {
+    if (locationId != null) {
+      return 'smartfarm/locations/$locationId/sensors/$varietas';
+    }
+    return 'smartfarm/sensors/$varietas';
+  }
+
   /// Stream untuk kelembapan tanah
-  Stream<int?> kelembapanTanahStream(String varietas) {
+  Stream<int?> kelembapanTanahStream(String varietas, {String? locationId}) {
     return _dbRef
-        .child('smartfarm/sensors/$varietas/kelembaban_tanah')
+        .child(
+          '${_sensorPath(varietas, locationId: locationId)}/kelembaban_tanah',
+        )
         .onValue
         .map((event) => event.snapshot.value as int?);
   }
 
   /// Stream untuk kelembapan udara
-  Stream<double?> kelembapanUdaraStream(String varietas) {
+  Stream<double?> kelembapanUdaraStream(String varietas, {String? locationId}) {
     return _dbRef
-        .child('smartfarm/sensors/$varietas/kelembapan_udara')
+        .child(
+          '${_sensorPath(varietas, locationId: locationId)}/kelembapan_udara',
+        )
         .onValue
         .map((event) {
           final value = event.snapshot.value;
@@ -26,35 +38,39 @@ class RealtimeDbService {
   }
 
   /// Stream untuk suhu
-  Stream<double?> suhuStream(String varietas) {
-    return _dbRef.child('smartfarm/sensors/$varietas/suhu').onValue.map((
-      event,
-    ) {
-      final value = event.snapshot.value;
-      if (value is int) return value.toDouble();
-      if (value is double) return value;
-      return null;
-    });
+  Stream<double?> suhuStream(String varietas, {String? locationId}) {
+    return _dbRef
+        .child('${_sensorPath(varietas, locationId: locationId)}/suhu')
+        .onValue
+        .map((event) {
+          final value = event.snapshot.value;
+          if (value is int) return value.toDouble();
+          if (value is double) return value;
+          return null;
+        });
   }
 
   /// Stream untuk intensitas cahaya
-  Stream<int?> cahayaStream(String varietas) {
+  Stream<int?> cahayaStream(String varietas, {String? locationId}) {
     return _dbRef
-        .child('smartfarm/sensors/$varietas/intensitas_cahaya')
+        .child(
+          '${_sensorPath(varietas, locationId: locationId)}/intensitas_cahaya',
+        )
         .onValue
         .map((event) => event.snapshot.value as int?);
   }
 
   /// Stream untuk pH tanah
-  Stream<double?> phTanahStream(String varietas) {
-    return _dbRef.child('smartfarm/sensors/$varietas/ph_tanah').onValue.map((
-      event,
-    ) {
-      final value = event.snapshot.value;
-      if (value is int) return value.toDouble();
-      if (value is double) return value;
-      return null;
-    });
+  Stream<double?> phTanahStream(String varietas, {String? locationId}) {
+    return _dbRef
+        .child('${_sensorPath(varietas, locationId: locationId)}/ph_tanah')
+        .onValue
+        .map((event) {
+          final value = event.snapshot.value;
+          if (value is int) return value.toDouble();
+          if (value is double) return value;
+          return null;
+        });
   }
 
   /// Get one-time data untuk kelembapan tanah
@@ -107,9 +123,9 @@ class RealtimeDbService {
   }
 
   /// Stream untuk EC/TDS
-  Stream<int?> ecStream(String varietas) {
+  Stream<int?> ecStream(String varietas, {String? locationId}) {
     return _dbRef
-        .child('smartfarm/sensors/$varietas/ec')
+        .child('${_sensorPath(varietas, locationId: locationId)}/ec')
         .onValue
         .map((event) => event.snapshot.value as int?);
   }

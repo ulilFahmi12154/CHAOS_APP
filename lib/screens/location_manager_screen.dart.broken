@@ -1,0 +1,938 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'map_picker_osm_screen.dart';
+
+class LocationManagerScreen extends StatefulWidget {
+  const LocationManagerScreen({super.key});
+
+  @override
+  State<LocationManagerScreen> createState() => _LocationManagerScreenState();
+}
+
+class _LocationManagerScreenState extends State<LocationManagerScreen> {
+  final user = FirebaseAuth.instance.currentUser;
+  List<Map<String, dynamic>> locations = [];
+  String? activeLocationId;
+  bool loading = true;
+  List<Map<String, String>> varietasList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVarietasList();
+    _loadLocations();
+  }
+
+  /// Load list varietas dari Firestore
+  Future<void> _loadVarietasList() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('varietas_config')
+          .get();
+
+      varietasList = snapshot.docs
+          .where((doc) => !doc.id.startsWith('_')) // Skip system documents
+          .map((doc) {
+            final data = doc.data();
+            return {'id': doc.id, 'nama': data['nama'] as String? ?? doc.id};
+          })
+          .toList();
+
+      setState(() {});
+    } catch (e) {
+      print('Error loading varietas: $e');
+    }
+  }
+
+  Future<void> _loadLocations() async {
+    if (user == null) return;
+
+    try {
+      // Load dari Firestore user profile
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final data = userDoc.data()!;
+        final locationIds = List<String>.from(
+          data['locations'] ?? ['lokasi_1'],
+        );
+        activeLocationId = data['active_location'] ?? 'lokasi_1';
+
+        // Load detail setiap lokasi dari Realtime DB
+        locations.clear();
+        for (var locId in locationIds) {
+          final locSnapshot = await FirebaseDatabase.instance
+              .ref('smartfarm/locations/$locId')
+              .get();
+
+          if (locSnapshot.exists) {
+            final locData = Map<String, dynamic>.from(
+              locSnapshot.value as Map<dynamic, dynamic>,
+            );
+            locData['id'] = locId;
+            locations.add(locData);
+          } else {
+            // Lokasi belum ada di RTDB, buat default
+            locations.add({
+              'id': locId,
+              'name': 'Lokasi ${locations.length + 1}',
+              'address': 'Belum diatur',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('Error loading locations: $e');
+    }
+
+    setState(() {
+      loading = false;
+    });
+  }
+
+  Future<void> _setActiveLocation(String locationId) async {
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .update({'active_location': locationId});
+
+      setState(() {
+        activeLocationId = locationId;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lokasi aktif diubah ke: $locationId'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _addLocation() async {
+    final nameController = TextEditingController();
+    String? selectedVarietas;
+    DateTime? selectedWaktuTanam;
+    double? latitude;
+    double? longitude;
+    String? address;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Tambah Lokasi Baru'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Input Nama Lokasi
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Lokasi',
+                    hintText: 'Misal: Greenhouse A, Lahan 1, dll',
+                    prefixIcon: Icon(Icons.location_on),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Lokasi di Peta
+                const Text(
+                  'Lokasi di Peta',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final result = await Navigator.push<Map<String, dynamic>>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MapPickerOsmScreen(
+                          initialPosition: latitude != null && longitude != null
+                              ? LatLng(latitude!, longitude!)
+                              : null,
+                        ),
+                          initialPosition: latitude != null && longitude != null
+                              ? LatLng(latitude!, longitude!)
+                              : null,
+                        ),
+                      ),
+                    );
+
+                    if (result != null) {
+                      setDialogState(() {
+                        latitude = result['latitude'];
+                        longitude = result['longitude'];
+                        address = result['address'];
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                      color: latitude != null
+                          ? Colors.green.shade50
+                          : Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          latitude != null ? Icons.check_circle : Icons.map,
+                          color: latitude != null
+                              ? Colors.green.shade700
+                              : Colors.grey.shade600,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                latitude != null
+                                    ? 'Lokasi Terpilih'
+                                    : 'Pilih Lokasi di Peta',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: latitude != null
+                                      ? Colors.green.shade700
+                                      : Colors.black87,
+                                ),
+                              ),
+                              if (latitude != null && address != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  address!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Lat: ${latitude!.toStringAsFixed(4)}, Lng: ${longitude!.toStringAsFixed(4)}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade500,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Varietas
+                const Text(
+                  'Varietas yang Ditanam',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      hint: const Text('Pilih Varietas'),
+                      value: selectedVarietas,
+                      items: varietasList.map((v) {
+                        return DropdownMenuItem<String>(
+                          value: v['id'],
+                          child: Text(v['nama'] ?? v['id']!),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedVarietas = value;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Waktu Tanam
+                const Text(
+                  'Waktu Tanam',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedWaktuTanam ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedWaktuTanam = picked;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 20),
+                        const SizedBox(width: 12),
+                        Text(
+                          selectedWaktuTanam != null
+                              ? '${selectedWaktuTanam!.day}/${selectedWaktuTanam!.month}/${selectedWaktuTanam!.year}'
+                              : 'Pilih Tanggal Tanam',
+                          style: TextStyle(
+                            color: selectedWaktuTanam != null
+                                ? Colors.black87
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Validasi
+                if (nameController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Nama lokasi tidak boleh kosong'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                if (latitude == null || longitude == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Silakan pilih lokasi di peta terlebih dahulu',
+                      ),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                if (selectedVarietas == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Silakan pilih varietas terlebih dahulu'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                if (selectedWaktuTanam == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Silakan pilih waktu tanam terlebih dahulu',
+                      ),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                // Generate ID lokasi baru
+                final newId = 'lokasi_${DateTime.now().millisecondsSinceEpoch}';
+
+                // Simpan ke Firebase Realtime DB
+                await FirebaseDatabase.instance
+                    .ref('smartfarm/locations/$newId')
+                    .set({
+                      'name': nameController.text,
+                      'address': address ?? 'Unknown Location',
+                      'latitude': latitude,
+                      'longitude': longitude,
+                      'active_varietas': selectedVarietas,
+                      'waktu_tanam': selectedWaktuTanam!.millisecondsSinceEpoch,
+                      'mode_otomatis': true,
+                    });
+
+                // Tambahkan ke list lokasi user di Firestore
+                final currentLocs = locations.map((l) => l['id']).toList();
+                currentLocs.add(newId);
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user!.uid)
+                    .update({'locations': currentLocs});
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '✅ Lokasi "${nameController.text}" berhasil ditambahkan',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadLocations();
+              },
+              child: const Text('Tambah'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editLocation(Map<String, dynamic> location) async {
+    final nameController = TextEditingController(text: location['name']);
+    String? selectedVarietas = location['active_varietas'];
+    DateTime? selectedWaktuTanam = location['waktu_tanam'] != null
+        ? DateTime.fromMillisecondsSinceEpoch(location['waktu_tanam'])
+        : null;
+    double? latitude = location['latitude'];
+    double? longitude = location['longitude'];
+    String? address = location['address'];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Lokasi'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Input Nama Lokasi
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Lokasi',
+                    prefixIcon: Icon(Icons.location_on),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Lokasi di Peta
+                const Text(
+                  'Lokasi di Peta',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final result = await Navigator.push<Map<String, dynamic>>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MapPickerOsmScreen(
+                          initialPosition: latitude != null && longitude != null
+                              ? LatLng(latitude!, longitude!)
+                              : null,
+                        ),
+                          initialPosition: latitude != null && longitude != null
+                              ? LatLng(latitude!, longitude!)
+                              : null,
+                        ),
+                      ),
+                    );
+
+                    if (result != null) {
+                      setDialogState(() {
+                        latitude = result['latitude'];
+                        longitude = result['longitude'];
+                        address = result['address'];
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                      color: latitude != null
+                          ? Colors.green.shade50
+                          : Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          latitude != null ? Icons.check_circle : Icons.map,
+                          color: latitude != null
+                              ? Colors.green.shade700
+                              : Colors.grey.shade600,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                latitude != null
+                                    ? 'Lokasi Terpilih'
+                                    : 'Pilih Lokasi di Peta',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: latitude != null
+                                      ? Colors.green.shade700
+                                      : Colors.black87,
+                                ),
+                              ),
+                              if (latitude != null && address != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  address!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Lat: ${latitude!.toStringAsFixed(4)}, Lng: ${longitude!.toStringAsFixed(4)}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade500,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Varietas
+                const Text(
+                  'Varietas yang Ditanam',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      hint: const Text('Pilih Varietas'),
+                      value: selectedVarietas,
+                      items: varietasList.map((v) {
+                        return DropdownMenuItem<String>(
+                          value: v['id'],
+                          child: Text(v['nama'] ?? v['id']!),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedVarietas = value;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Pilih Waktu Tanam
+                const Text(
+                  'Waktu Tanam',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedWaktuTanam ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedWaktuTanam = picked;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 20),
+                        const SizedBox(width: 12),
+                        Text(
+                          selectedWaktuTanam != null
+                              ? '${selectedWaktuTanam!.day}/${selectedWaktuTanam!.month}/${selectedWaktuTanam!.year}'
+                              : 'Pilih Tanggal Tanam',
+                          style: TextStyle(
+                            color: selectedWaktuTanam != null
+                                ? Colors.black87
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Nama lokasi tidak boleh kosong'),
+                    ),
+                  );
+                  return;
+                }
+
+                // Update data di Firebase
+                final updates = <String, dynamic>{'name': nameController.text};
+                if (latitude != null && longitude != null) {
+                  updates['latitude'] = latitude;
+                  updates['longitude'] = longitude;
+                  updates['address'] = address ?? 'Unknown Location';
+                }
+                if (selectedVarietas != null) {
+                  updates['active_varietas'] = selectedVarietas;
+                }
+                if (selectedWaktuTanam != null) {
+                  updates['waktu_tanam'] =
+                      selectedWaktuTanam!.millisecondsSinceEpoch;
+                }
+
+                await FirebaseDatabase.instance
+                    .ref('smartfarm/locations/${location['id']}')
+                    .update(updates);
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Lokasi berhasil diupdate'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadLocations();
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteLocation(String locationId) async {
+    if (locations.length == 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak bisa menghapus, minimal harus ada 1 lokasi'),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Lokasi'),
+        content: const Text('Apakah Anda yakin ingin menghapus lokasi ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      // Hapus dari RTDB
+      await FirebaseDatabase.instance
+          .ref('smartfarm/locations/$locationId')
+          .remove();
+
+      // Update user profile
+      final updatedLocs = locations
+          .where((l) => l['id'] != locationId)
+          .map((l) => l['id'])
+          .toList();
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .update({'locations': updatedLocs});
+
+      // Jika lokasi yang dihapus adalah lokasi aktif, set ke lokasi pertama
+      if (activeLocationId == locationId && updatedLocs.isNotEmpty) {
+        await _setActiveLocation(updatedLocs.first);
+      }
+
+      _loadLocations();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Kelola Lokasi'),
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : locations.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.location_off,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Belum ada lokasi',
+                    style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: locations.length,
+              itemBuilder: (context, index) {
+                final location = locations[index];
+                final isActive = location['id'] == activeLocationId;
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: isActive ? 4 : 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: isActive
+                          ? Colors.green.shade700
+                          : Colors.grey.shade300,
+                      width: isActive ? 2 : 1,
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? Colors.green.shade100
+                            : Colors.grey.shade100,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.location_on,
+                        color: isActive
+                            ? Colors.green.shade700
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                    title: Text(
+                      location['name'] ?? location['id'],
+                      style: TextStyle(
+                        fontWeight: isActive
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(
+                          location['address'] ?? 'Alamat belum diatur',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        if (location['latitude'] != null &&
+                            location['longitude'] != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.my_location,
+                                size: 14,
+                                color: Colors.grey.shade500,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'GPS: ${location['latitude'].toStringAsFixed(4)}, ${location['longitude'].toStringAsFixed(4)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (isActive) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade700,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'LOKASI AKTIF',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert),
+                      onSelected: (value) {
+                        if (value == 'activate') {
+                          _setActiveLocation(location['id']);
+                        } else if (value == 'edit') {
+                          _editLocation(location);
+                        } else if (value == 'delete') {
+                          _deleteLocation(location['id']);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (!isActive)
+                          const PopupMenuItem(
+                            value: 'activate',
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green),
+                                SizedBox(width: 8),
+                                Text('Jadikan Aktif'),
+                              ],
+                            ),
+                          ),
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Text('Edit'),
+                            ],
+                          ),
+                        ),
+                        if (!isActive)
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Hapus'),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addLocation,
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_location),
+        label: const Text('Tambah Lokasi'),
+      ),
+    );
+  }
+}

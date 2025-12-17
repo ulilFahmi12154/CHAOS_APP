@@ -100,6 +100,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pompaStatus = false;
   String _userLocation = 'Loading...';
 
+  // MULTI-LOKASI
+  String activeLocationId = 'lokasi_1'; // Default
+  String activeLocationName = 'Lokasi 1';
+  List<Map<String, String>> userLocations = [];
+
+  /// Load nama lokasi dari Firebase (tidak perlu GPS/Weather API lagi)
+  Future<void> _fetchLocationAndWeather() async {
+    // Fungsi ini tidak perlu lagi karena nama lokasi sudah di-load via _loadUserLocations()
+    // Kept for backward compatibility
+  }
+
   // Get user location from Firebase
   Future<void> _loadUserLocation() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -144,9 +155,128 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserLocations(); // Load lokasi user dulu
     _loadActiveVarietas();
     _loadUserSettings();
     _loadUserLocation();
+    _fetchLocationAndWeather();
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh data saat widget di-update (misal setelah kembali dari Settings)
+    print('🔄 HomeScreen didUpdateWidget: reloading all data');
+    _loadUserLocations(); // Reload lokasi dulu
+    _loadActiveVarietas();
+    _loadUserSettings();
+    _fetchLocationAndWeather();
+  }
+
+  // Helper: Generate path Firebase dengan lokasi aktif
+  String _locationPath(String path) {
+    return 'smartfarm/locations/$activeLocationId/$path';
+  }
+
+  // Load lokasi yang dimiliki user dari Firestore
+  Future<void> _loadUserLocations() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists && mounted) {
+        final data = userDoc.data()!;
+        final locationIds = List<String>.from(
+          data['locations'] ?? ['lokasi_1'],
+        );
+        final activeLocId = data['active_location'] ?? 'lokasi_1';
+
+        // Load detail setiap lokasi dari Realtime DB
+        List<Map<String, String>> locs = [];
+        Set<String> seenIds = {}; // Track IDs untuk avoid duplicate
+
+        for (var locId in locationIds) {
+          // Skip jika ID sudah ada (avoid duplicate)
+          if (seenIds.contains(locId)) continue;
+          seenIds.add(locId);
+
+          final locSnapshot = await FirebaseDatabase.instance
+              .ref('smartfarm/locations/$locId')
+              .get();
+
+          if (locSnapshot.exists) {
+            final locData = Map<String, dynamic>.from(locSnapshot.value as Map);
+            locs.add({
+              'id': locId,
+              'name': locData['name'] ?? locId,
+              'address': locData['address'] ?? '',
+            });
+          } else {
+            locs.add({
+              'id': locId,
+              'name': 'Lokasi ${locs.length + 1}',
+              'address': '',
+            });
+          }
+        }
+
+        // Pastikan activeLocationId ada dalam list
+        if (locs.isEmpty) {
+          locs.add({'id': 'lokasi_1', 'name': 'Lokasi 1', 'address': ''});
+        }
+
+        // Validasi activeLocationId ada dalam list, jika tidak set ke lokasi pertama
+        final validActiveId = locs.any((l) => l['id'] == activeLocId)
+            ? activeLocId
+            : locs.first['id']!;
+
+        setState(() {
+          userLocations = locs;
+          activeLocationId = validActiveId;
+          activeLocationName =
+              locs.firstWhere(
+                (l) => l['id'] == validActiveId,
+                orElse: () => locs.first,
+              )['name'] ??
+              validActiveId;
+        });
+      }
+    } catch (e) {
+      print('Error loading user locations: $e');
+    }
+  }
+
+  // Ganti lokasi aktif
+  Future<void> _switchLocation(String newLocationId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
+        {'active_location': newLocationId},
+      );
+
+      setState(() {
+        activeLocationId = newLocationId;
+        activeLocationName =
+            userLocations.firstWhere(
+              (l) => l['id'] == newLocationId,
+              orElse: () => {'name': newLocationId},
+            )['name'] ??
+            newLocationId;
+      });
+
+      // Reload data untuk lokasi baru
+      _loadActiveVarietas();
+      _fetchLocationAndWeather();
+    } catch (e) {
+      print('Error switching location: $e');
+    }
   }
 
   /// Load config varietas dari Firestore untuk mendapatkan min/max ranges
@@ -193,21 +323,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Load ambang batas dari user settings
   Future<void> _loadUserSettings() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    // Listen to varietas changes
-    final varietasRef = FirebaseDatabase.instance.ref(
-      'users/${user.uid}/active_varietas',
-    );
-
-    varietasRef.onValue.listen((event) async {
-      if (event.snapshot.exists && mounted) {
-        final varietas = event.snapshot.value.toString();
-        // Load config untuk varietas ini
-        await _loadVarietasConfig(varietas);
-      }
-    });
+    // Method ini sekarang tidak perlu listener karena sudah ada di _loadActiveVarietas()
+    // Kept for backward compatibility, bisa dihapus nanti
   }
 
   Future<void> _loadActiveVarietas() async {
@@ -219,15 +336,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Baca pilihan varietas per user
-    final userRef = FirebaseDatabase.instance.ref(
-      'users/${user.uid}/active_varietas',
+    // MULTI-LOKASI: Baca varietas dari lokasi aktif
+    final varietasRef = FirebaseDatabase.instance.ref(
+      'smartfarm/locations/$activeLocationId/active_varietas',
     );
-    userRef.onValue.listen((event) {
-      if (event.snapshot.exists) {
+    varietasRef.onValue.listen((event) async {
+      if (event.snapshot.exists && mounted) {
+        final varietas = event.snapshot.value.toString();
         setState(() {
-          activeVarietas = event.snapshot.value.toString();
+          activeVarietas = varietas;
         });
+        // Load config untuk varietas ini agar threshold terupdate
+        await _loadVarietasConfig(varietas);
+        print('🔄 Dashboard sync: varietas updated to $varietas');
       } else {
         setState(() {
           activeVarietas = null;
@@ -244,7 +365,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final dateStr =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final path = 'smartfarm/warning/$varietasToUse/$dateStr';
+    // MULTI-LOKASI: Path warning per lokasi
+    final path =
+        'smartfarm/locations/$activeLocationId/warning/$varietasToUse/$dateStr';
 
     final db = FirebaseDatabase.instance.ref(path);
     return db.onValue.map((event) {
@@ -329,14 +452,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Weather & Location Card with Real Sensor Data
+  // Weather & Location Card with Real Weather API
   Widget _buildWeatherLocationCard() {
     final now = DateTime.now();
     final dateStr =
         '${now.day.toString().padLeft(2, '0')} ${_monthName(now.month)} ${now.year}';
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final varietasToUse = activeVarietas ?? 'default';
 
     return Container(
       width: double.infinity,
@@ -345,209 +467,104 @@ class _HomeScreenState extends State<HomeScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.amber.shade50, Colors.orange.shade50],
+          colors: [Colors.green.shade50, Colors.teal.shade50],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.15),
+            color: Colors.teal.withOpacity(0.15),
             blurRadius: 20,
             offset: const Offset(0, 8),
             spreadRadius: 2,
           ),
         ],
       ),
-      child: StreamBuilder<dynamic>(
-        stream: _dbService.suhuStream(varietasToUse),
-        builder: (context, tempSnapshot) {
-          final temp = tempSnapshot.hasData ? tempSnapshot.data : '--';
-
-          return StreamBuilder<dynamic>(
-            stream: _dbService.kelembapanUdaraStream(varietasToUse),
-            builder: (context, humSnapshot) {
-              final humidity = humSnapshot.hasData ? humSnapshot.data : '--';
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header: Location and Date
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.location_on,
-                        color: Colors.grey.shade700,
-                        size: 16,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Location Name
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.agriculture,
+                  color: Colors.teal.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      activeLocationName,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade900,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _userLocation,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$dateStr',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  Text(
-                    timeStr,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Main Content: Big Temperature Display
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Left: Weather Icon
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.orange.withOpacity(0.2),
-                              blurRadius: 10,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.wb_sunny,
-                          color: Colors.orange.shade600,
-                          size: 40,
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-
-                      // Center: Temperature
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Sunny',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  temp is num
-                                      ? '${temp.toStringAsFixed(0)}'
-                                      : temp.toString(),
-                                  style: TextStyle(
-                                    fontSize: 56,
-                                    fontWeight: FontWeight.bold,
-                                    height: 1.0,
-                                    color: Colors.grey.shade900,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    '°C',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            // Humidity info
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.water_drop,
-                                  size: 16,
-                                  color: Colors.blue.shade600,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'H: ${humidity is num ? humidity.toStringAsFixed(0) : humidity}%',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade700,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                if (temp is num) ...[
-                                  Icon(
-                                    Icons.thermostat,
-                                    size: 16,
-                                    color: Colors.orange.shade600,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'L: ${(temp - 5).toStringAsFixed(0)}°C',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade700,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Bottom: Varietas Info (if selected)
-                  if (activeVarietas != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.eco,
-                            size: 14,
-                            color: Colors.green.shade700,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            activeVarietas!.replaceAll('_', ' ').toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green.shade800,
-                            ),
-                          ),
-                        ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Lokasi Greenhouse',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
                       ),
                     ),
-                ],
-              );
-            },
-          );
-        },
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Date & Time
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  color: Colors.teal.shade700,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  dateStr,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                const Spacer(),
+                Icon(Icons.access_time, color: Colors.teal.shade700, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -596,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             StreamBuilder<dynamic>(
               stream: FirebaseDatabase.instance
-                  .ref('smartfarm/sensors/$varietasToUse/pompa')
+                  .ref(_locationPath('sensors/$varietasToUse/pompa'))
                   .onValue
                   .map((e) => e.snapshot.value),
               builder: (context, snapshot) {
@@ -633,7 +650,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 24),
             StreamBuilder<dynamic>(
               stream: FirebaseDatabase.instance
-                  .ref('smartfarm/mode_otomatis')
+                  .ref(_locationPath('mode_otomatis'))
                   .onValue
                   .map((e) => e.snapshot.value),
               builder: (context, snapshot) {
@@ -712,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : StreamBuilder<dynamic>(
               stream: FirebaseDatabase.instance
-                  .ref('smartfarm/sensors/$varietasToUse')
+                  .ref(_locationPath('sensors/$varietasToUse'))
                   .onValue
                   .map((e) => e.snapshot.value),
               builder: (context, snapshot) {
@@ -870,24 +887,165 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              greeting,
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Smart Farmer',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    greeting,
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Smart Farmer',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 12),
+            // MULTI-LOKASI: Location Selector Dropdown
+            if (userLocations.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: activeLocationId,
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.green.shade700,
+                    ),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade800,
+                    ),
+                    items: userLocations.map((loc) {
+                      return DropdownMenuItem<String>(
+                        value: loc['id'],
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              size: 16,
+                              color: Colors.green.shade700,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    loc['name']!,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (loc['address'] != null &&
+                                      loc['address']!.isNotEmpty &&
+                                      loc['address'] != 'Unknown Location')
+                                    Text(
+                                      loc['address']!,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        _switchLocation(value);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            // Tombol Manage Locations
+            IconButton(
+              onPressed: () {
+                Navigator.pushNamed(context, '/locations');
+              },
+              icon: Icon(Icons.settings, color: Colors.grey.shade700),
+              tooltip: 'Kelola Lokasi',
             ),
           ],
         ),
+        // Card Info Lokasi (address)
+        if (userLocations.isNotEmpty && activeLocationId != null)
+          Builder(
+            builder: (context) {
+              final currentLocation = userLocations.firstWhere(
+                (loc) => loc['id'] == activeLocationId,
+                orElse: () => {'id': '', 'name': '', 'address': ''},
+              );
+              final address = currentLocation['address'];
+              if (address != null &&
+                  address.isNotEmpty &&
+                  address != 'Unknown Location') {
+                return Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.place, color: Colors.blue.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          address,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        const SizedBox(height: 8),
+        Row(children: []),
         const SizedBox(height: 16),
         // Varietas Selection Card
         Container(
@@ -1064,22 +1222,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Plant Health Card - large card with image, circular progress
   Widget _buildPlantHealthCard() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox.shrink();
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
+    // MULTI-LOKASI: Load waktu tanam dari lokasi aktif
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .onValue,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
           return _buildEmptyPlantCard();
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final waktuTanam = data?['waktu_tanam'] as int?;
-
+        final waktuTanam = snapshot.data!.snapshot.value as int?;
         if (waktuTanam == null) {
           return _buildEmptyPlantCard();
         }
@@ -1383,7 +1536,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: StreamBuilder<dynamic>(
             stream: FirebaseDatabase.instance
-                .ref('smartfarm/sensors/$varietasToUse/pompa')
+                .ref(_locationPath('sensors/$varietasToUse/pompa'))
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {
@@ -1491,7 +1644,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Temperature',
                 Icons.thermostat,
                 Colors.orange,
-                _dbService.suhuStream(varietasToUse),
+                _dbService.suhuStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '°C',
                 suhuMin,
                 suhuMax,
@@ -1503,7 +1659,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Humidity',
                 Icons.opacity,
                 Colors.blue,
-                _dbService.kelembapanUdaraStream(varietasToUse),
+                _dbService.kelembapanUdaraStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '%',
                 humMin,
                 humMax,
@@ -1515,7 +1674,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Soil Moisture',
                 Icons.water_drop,
                 Colors.green,
-                _dbService.kelembapanTanahStream(varietasToUse),
+                _dbService.kelembapanTanahStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '',
                 soilMin,
                 soilMax,
@@ -1531,7 +1693,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Light',
                 Icons.light_mode,
                 Colors.amber,
-                _dbService.cahayaStream(varietasToUse),
+                _dbService.cahayaStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'lux',
                 luxMin,
                 luxMax,
@@ -1543,7 +1708,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'pH Soil',
                 Icons.science,
                 Colors.purple,
-                _dbService.phTanahStream(varietasToUse),
+                _dbService.phTanahStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'pH',
                 phMin,
                 phMax,
@@ -1555,7 +1723,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'EC/TDS',
                 Icons.water,
                 Colors.teal,
-                _dbService.ecStream(varietasToUse),
+                _dbService.ecStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '',
                 ecMin,
                 ecMax,
@@ -1701,22 +1872,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Upcoming Tasks Section
   Widget _buildUpcomingTasksSection() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox.shrink();
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
+    // MULTI-LOKASI: Load waktu tanam dari lokasi aktif
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .onValue,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
           return const SizedBox.shrink();
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final waktuTanam = data?['waktu_tanam'] as int?;
-
+        final waktuTanam = snapshot.data!.snapshot.value as int?;
         if (waktuTanam == null) return const SizedBox.shrink();
 
         final tanamDate = DateTime.fromMillisecondsSinceEpoch(waktuTanam);
@@ -2225,10 +2391,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final db = FirebaseDatabase.instance.ref();
 
-      // 1. Hapus pilihan varietas dari profile user
-      await db.child('users/${user.uid}/active_varietas').remove();
+      // MULTI-LOKASI: Hapus varietas dari path per-lokasi
+      // 1. Hapus dari lokasi aktif (UTAMA)
+      await db
+          .child('smartfarm/locations/$activeLocationId/active_varietas')
+          .remove();
 
-      // 2. Hapus juga dari path global ESP32 agar Wokwi berhenti membaca
+      // 2. Hapus waktu tanam juga
+      await db
+          .child('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .remove();
+
+      // 3. Hapus dari path global Wokwi agar ESP32 berhenti membaca
       await db.child('smartfarm/active_varietas').set("");
 
       setState(() {
@@ -2238,7 +2412,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Varietas dihapus. ESP32 akan berhenti membaca sensor.',
+            '✅ Varietas dihapus dari lokasi ini. ESP32 akan berhenti membaca.',
           ),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 3),
@@ -2297,7 +2471,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               return StreamBuilder<dynamic>(
                 stream: FirebaseDatabase.instance
-                    .ref('smartfarm/sensors/$varietasToUse/pompa')
+                    .ref(_locationPath('sensors/$varietasToUse/pompa'))
                     .onValue
                     .map((e) => e.snapshot.value),
                 builder: (context, pompaSnapshot) {
@@ -2700,7 +2874,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Suhu Udara',
                 Icons.thermostat,
                 Colors.orange,
-                _dbService.suhuStream(varietasToUse),
+                _dbService.suhuStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '°C',
                 suhuMin,
                 suhuMax,
@@ -2712,7 +2889,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Kelembapan Udara',
                 Icons.opacity,
                 Colors.blue,
-                _dbService.kelembapanUdaraStream(varietasToUse),
+                _dbService.kelembapanUdaraStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 '%',
                 humMin,
                 humMax,
@@ -2728,7 +2908,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Kelembapan Tanah',
                 Icons.water_drop,
                 Colors.green,
-                _dbService.kelembapanTanahStream(varietasToUse),
+                _dbService.kelembapanTanahStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'ADC',
                 soilMin,
                 soilMax,
@@ -2740,7 +2923,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Intensitas Cahaya',
                 Icons.light_mode,
                 Colors.yellow.shade700,
-                _dbService.cahayaStream(varietasToUse),
+                _dbService.cahayaStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'Lux',
                 luxMin,
                 luxMax,
@@ -2756,7 +2942,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'pH Tanah',
                 Icons.science,
                 Colors.purple,
-                _dbService.phTanahStream(varietasToUse),
+                _dbService.phTanahStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'pH',
                 phMin,
                 phMax,
@@ -2768,7 +2957,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'EC/TDS',
                 Icons.water,
                 Colors.teal,
-                _dbService.ecStream(varietasToUse),
+                _dbService.ecStream(
+                  varietasToUse,
+                  locationId: activeLocationId,
+                ),
                 'ADC',
                 ecMin,
                 ecMax,
@@ -2781,22 +2973,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFasePertumbuhanCard() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox.shrink();
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
+    // MULTI-LOKASI: Load waktu tanam dari lokasi aktif
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
+          .onValue,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const SizedBox.shrink();
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.settings, color: Colors.orange.shade700, size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Atur waktu tanam saat menambah/edit lokasi untuk memantau fase pertumbuhan',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          );
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final waktuTanam = data?['waktu_tanam'] as int?;
-
+        final waktuTanam = snapshot.data!.snapshot.value as int?;
         if (waktuTanam == null) {
           return Container(
             padding: const EdgeInsets.all(16),
@@ -2811,7 +3017,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
-                    'Atur waktu tanam di halaman Pengaturan untuk memantau fase pertumbuhan',
+                    'Atur waktu tanam saat menambah/edit lokasi untuk memantau fase pertumbuhan',
                     style: TextStyle(fontSize: 13),
                   ),
                 ),

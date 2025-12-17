@@ -12,6 +12,7 @@ import 'screens/rekomendasi_pupuk_screen.dart';
 import 'screens/nutrient_recommendation_screen.dart';
 import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'screens/location_manager_screen.dart';
 import 'services/phase_threshold_sync_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -139,6 +140,7 @@ class _MyAppState extends State<MyApp> {
         '/nutrient-recommendation': (context) =>
             const NutrientRecommendationScreen(),
         '/intro': (context) => const IntroSlidesScreen(),
+        '/locations': (context) => const LocationManagerScreen(),
         // Route alias: always open notifications within MainNavigationScreen
         '/notifikasi': (context) => const MainNavigationScreen(initialIndex: 6),
       },

@@ -50,7 +50,8 @@ dependencies:
   printing: ^5.13.2
   path_provider: ^2.1.4
   excel: ^4.0.6
-  geolocator: ^10.0.0
+  # geolocator: ^10.0.0  # removed for OSM
+  # geocoding: ^2.1.0    # removed for OSM
   http: ^1.2.0
   flutter_map: ^6.1.0
   latlong2: ^0.9.0
