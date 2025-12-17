@@ -1461,23 +1461,6 @@ class _HistoryScreenState extends State<HistoryScreen>
     );
   }
 
-  String _getYAxisLabel() {
-    switch (_selectedDataType) {
-      case 0:
-        return 'Kelembaban Tanah';
-      case 1:
-        return 'Suhu Udara';
-      case 2:
-        return 'Intensitas Cahaya';
-      case 3:
-        return 'Kelembapan Udara';
-      case 4:
-        return 'pH Tanah';
-      default:
-        return 'Nilai';
-    }
-  }
-
   double _getMaxYValue() {
     // For intensity, use fixed axis 0..10000 with steps of 1000
     if (_selectedDataType == 2) {

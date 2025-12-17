@@ -5,9 +5,10 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/realtime_db_service.dart';
 import '../services/phase_threshold_sync_service.dart';
+import '../services/local_notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -136,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       print('🌱 Loading varietas list from Firestore...');
       final snapshot = await _firestore.collection('varietas_config').get();
-      print('📦 Found ${snapshot.docs.length} varietas documents');
+      print('📦 Total documents in Firestore: ${snapshot.docs.length}');
 
       if (snapshot.docs.isNotEmpty && mounted) {
         final varietasList = <String>[];
@@ -165,11 +166,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
         print('✅ Varietas list loaded: $_varietasList');
       } else {
+        // Fallback: gunakan list default jika Firestore benar-benar kosong
         print('⚠️ No varietas found or widget not mounted');
+        setState(() {
+          _varietasList = ['Bara', 'Juwiring', 'Patra 3'];
+        });
       }
     } catch (e) {
       // ignore: avoid_print
       print('❌ Error loading varietas list: $e');
+      // Fallback: gunakan list default jika error
+      if (mounted) {
+        setState(() {
+          _varietasList = ['Bara', 'Juwiring', 'Patra 3'];
+        });
+      }
     }
   }
 
@@ -256,6 +267,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Auto-sync threshold fase ke RTDB setelah waktu tanam diubah
           _syncThresholdPhase();
+
+          // Schedule all fertilization reminders
+          _scheduleTaskReminders(picked);
         }
       } catch (e) {
         if (mounted) {
@@ -266,6 +280,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  /// Schedule task reminders based on planting date
+  Future<void> _scheduleTaskReminders(DateTime plantingDate) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🔔 Menjadwalkan pengingat tugas...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final notificationService = LocalNotificationService();
+      await notificationService.initialize();
+      await notificationService.requestPermissions();
+      await notificationService.scheduleAllFertilizationReminders(
+        plantingDate: plantingDate,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Pengingat tugas berhasil dijadwalkan!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error scheduling reminders: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Gagal menjadwalkan pengingat: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
     }
   }
@@ -1641,7 +1694,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         Switch(
                           value: notifEnabled,
-                          activeColor: Colors.white,
+                          activeThumbColor: Colors.white,
                           activeTrackColor: Colors.green,
                           onChanged: (v) {
                             setState(() => notifEnabled = v);
@@ -1674,10 +1727,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<String?> _showVarietasMenu(BuildContext context) async {
-    print('📋 Opening varietas menu with ${_varietasList.length} items');
-
+    // Validasi: pastikan ada varietas yang tersedia
     if (_varietasList.isEmpty) {
-      print('⚠️ Cannot show menu: varietas list is empty');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada varietas yang tersedia'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return null;
     }
 
@@ -1717,7 +1774,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         maxWidth: button.size.width,
       ),
       items: _varietasList.map((v) {
-        final bool isSelected = v == _selectedVarietas;
+        // Konversi display name ke ID untuk perbandingan
+        final varietasId = v.toLowerCase().replaceAll(' ', '_');
+        final bool isSelected = varietasId == _selectedVarietas;
         return PopupMenuItem<String>(
           value: v,
           height: 52,

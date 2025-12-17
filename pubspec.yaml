@@ -54,6 +54,8 @@ dependencies:
   http: ^1.2.0
   flutter_map: ^6.1.0
   latlong2: ^0.9.0
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
 
 flutter_launcher_icons:
   android: true
@@ -86,9 +88,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
-    # - assets/fonts/
     - assets/ikon/
-
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

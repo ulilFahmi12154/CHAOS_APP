@@ -14,6 +14,7 @@ import 'screens/intro_slides_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/location_manager_screen.dart';
 import 'services/phase_threshold_sync_service.dart';
+import 'services/sensor_monitoring_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -55,9 +56,12 @@ class _MyAppState extends State<MyApp> {
       if (user != null) {
         // User login, start sync service
         PhaseThresholdSyncService.startSync();
+        // Start sensor monitoring service untuk notifikasi otomatis
+        SensorMonitoringService().startMonitoring();
       } else {
         // User logout, stop sync service
         PhaseThresholdSyncService.stopSync();
+        SensorMonitoringService().stopMonitoring();
       }
     });
   }

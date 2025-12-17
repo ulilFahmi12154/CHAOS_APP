@@ -1,13 +1,16 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'dart:async';
+import 'dart:io';
+
+import 'package:excel/excel.dart' as ex;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:excel/excel.dart' as ex;
-import 'dart:io';
-import 'package:intl/intl.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -21,27 +24,57 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _activeVarietas;
   bool _isLoadingData = true;
   Map<String, dynamic> _reportData = {};
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  StreamSubscription<DatabaseEvent>? _varietasSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadActiveVarietas();
-    _loadReportData();
+    _setupVarietasListener();
   }
 
-  Future<void> _loadActiveVarietas() async {
+  @override
+  void dispose() {
+    _varietasSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _setupVarietasListener() {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final ref = FirebaseDatabase.instance.ref(
-        'users/${user.uid}/varietas_aktif',
-      );
-      final snapshot = await ref.get();
-      if (snapshot.exists && mounted) {
-        setState(() {
-          _activeVarietas = snapshot.value.toString();
-        });
-      }
-    }
+    if (user == null) return;
+
+    final ref = FirebaseDatabase.instance.ref(
+      'users/${user.uid}/active_varietas',
+    );
+
+    // Listen to real-time changes
+    _varietasSubscription = ref.onValue.listen(
+      (event) {
+        if (event.snapshot.exists && mounted) {
+          final newVarietas = event.snapshot.value.toString();
+          print(
+            '🔄 Varietas detected: $newVarietas (current: $_activeVarietas)',
+          );
+          setState(() {
+            _activeVarietas = newVarietas;
+          });
+          // Always reload data when varietas changes or on first load
+          _loadReportData();
+        } else if (mounted) {
+          // Varietas dihapus atau belum ada
+          print('⚠️ No varietas selected');
+          setState(() {
+            _activeVarietas = null;
+            _isLoadingData = false;
+            _reportData = {};
+          });
+        }
+      },
+      onError: (error) {
+        print('❌ Error listening to varietas: $error');
+      },
+    );
   }
 
   Future<void> _loadReportData() async {
@@ -56,66 +89,204 @@ class _ReportScreenState extends State<ReportScreen> {
     try {
       final now = DateTime.now();
       DateTime startDate;
+      DateTime endDate = now;
 
-      // Tentukan range waktu berdasarkan periode
-      switch (_selectedPeriod) {
-        case 'Hari Ini':
-          startDate = DateTime(now.year, now.month, now.day);
-          break;
-        case 'Minggu Ini':
-          startDate = now.subtract(Duration(days: now.weekday - 1));
-          startDate = DateTime(startDate.year, startDate.month, startDate.day);
-          break;
-        case 'Bulan Ini':
-        default:
-          startDate = DateTime(now.year, now.month, 1);
-          break;
+      // Gunakan custom date jika ada
+      if (_customStartDate != null && _customEndDate != null) {
+        startDate = _customStartDate!;
+        endDate = _customEndDate!;
+      } else {
+        switch (_selectedPeriod) {
+          case 'Hari Ini':
+            startDate = DateTime(now.year, now.month, now.day);
+            break;
+          case 'Minggu Ini':
+            startDate = now.subtract(Duration(days: now.weekday - 1));
+            startDate = DateTime(
+              startDate.year,
+              startDate.month,
+              startDate.day,
+            );
+            break;
+          case 'Bulan Ini':
+          default:
+            startDate = DateTime(now.year, now.month, 1);
+            break;
+        }
       }
 
-      // Ambil data dari Firebase
-      final varietasRef = FirebaseDatabase.instance.ref(
-        'users/${user.uid}/varietas_aktif',
-      );
-      final varietasSnapshot = await varietasRef.get();
-      final varietas = varietasSnapshot.exists
-          ? varietasSnapshot.value.toString()
-          : 'default';
+      // Pastikan varietas sudah di-set oleh listener
+      if (_activeVarietas == null) {
+        // Jika belum ada varietas, stop loading
+        setState(() => _isLoadingData = false);
+        return;
+      }
 
-      // Ambil data sensor history
-      final sensorRef = FirebaseDatabase.instance.ref('sensor_data/$varietas');
-      final sensorSnapshot = await sensorRef.get();
+      final varietas = _activeVarietas!;
+      print('📊 Loading report data for: $varietas');
+
+      // Ambil data sensor history dari Firebase
+      final sensorHistoryRef = FirebaseDatabase.instance.ref(
+        'sensor_history/$varietas',
+      );
+      final sensorHistorySnapshot = await sensorHistoryRef.get();
+
+      // Ambil data irrigation history
+      final irrigationHistoryRef = FirebaseDatabase.instance.ref(
+        'irrigation_history/$varietas',
+      );
+      final irrigationHistorySnapshot = await irrigationHistoryRef.get();
 
       int totalPenyiraman = 0;
       double totalDurasi = 0;
       List<double> suhuList = [];
       List<double> humidityList = [];
       List<double> soilList = [];
+      List<double> lightList = [];
+      List<double> phList = [];
       Map<String, int> dailyIrrigation = {};
+      Map<String, double> weeklySuhu = {};
+      Map<String, double> weeklyHumidity = {};
+      Map<String, double> weeklySoil = {};
+      int penyiramanOtomatis = 0;
+      int penyiramanManual = 0;
+      double totalAirUsed = 0;
 
-      if (sensorSnapshot.exists) {
-        final data = sensorSnapshot.value as Map;
-        // Simulasi data untuk demo - dalam implementasi nyata, ambil dari database
-        // Untuk sekarang kita generate data berdasarkan periode
-        final daysDiff = now.difference(startDate).inDays + 1;
+      // Process sensor history data
+      if (sensorHistorySnapshot.exists) {
+        final historyData = sensorHistorySnapshot.value as Map;
 
-        totalPenyiraman = daysDiff * (15 + (daysDiff % 5));
-        totalDurasi = totalPenyiraman * 0.35;
+        historyData.forEach((key, value) {
+          try {
+            if (value is Map) {
+              final timestamp = value['timestamp'] as int?;
+              if (timestamp != null) {
+                final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
-        // Generate data untuk grafik mingguan
-        for (int i = 0; i < 7; i++) {
-          final day = startDate.add(Duration(days: i));
-          if (day.isBefore(now) || day.day == now.day) {
-            final dayKey = DateFormat('EEE').format(day);
-            dailyIrrigation[dayKey] = 10 + (i * 2) + (daysDiff % 3);
+                // Filter berdasarkan range tanggal
+                if (dateTime.isAfter(
+                      startDate.subtract(const Duration(days: 1)),
+                    ) &&
+                    dateTime.isBefore(endDate.add(const Duration(days: 1)))) {
+                  // Ambil data sensor
+                  if (value['temperature'] != null) {
+                    final temp = (value['temperature'] as num).toDouble();
+                    suhuList.add(temp);
+
+                    // Aggregate weekly data
+                    final dayKey = DateFormat('EEE').format(dateTime);
+                    weeklySuhu[dayKey] = (weeklySuhu[dayKey] ?? 0) + temp;
+                  }
+                  if (value['humidity'] != null) {
+                    final hum = (value['humidity'] as num).toDouble();
+                    humidityList.add(hum);
+
+                    final dayKey = DateFormat('EEE').format(dateTime);
+                    weeklyHumidity[dayKey] =
+                        (weeklyHumidity[dayKey] ?? 0) + hum;
+                  }
+                  if (value['soil_moisture'] != null) {
+                    final soil = (value['soil_moisture'] as num).toDouble();
+                    soilList.add(soil);
+
+                    final dayKey = DateFormat('EEE').format(dateTime);
+                    weeklySoil[dayKey] = (weeklySoil[dayKey] ?? 0) + soil;
+                  }
+                  if (value['light_intensity'] != null) {
+                    lightList.add((value['light_intensity'] as num).toDouble());
+                  }
+                  if (value['ph_tanah'] != null) {
+                    phList.add((value['ph_tanah'] as num).toDouble());
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error processing sensor data: $e');
           }
-        }
+        });
+      }
 
-        // Simulasi sensor data
-        for (int i = 0; i < totalPenyiraman; i++) {
-          suhuList.add(24 + (i % 8) * 0.5);
-          humidityList.add(60 + (i % 15) * 0.8);
-          soilList.add(1400 + (i % 20) * 15.0);
-        }
+      // Process irrigation history data
+      if (irrigationHistorySnapshot.exists) {
+        final irrigationData = irrigationHistorySnapshot.value as Map;
+
+        irrigationData.forEach((key, value) {
+          try {
+            if (value is Map) {
+              final timestamp = value['timestamp'] as int?;
+              if (timestamp != null) {
+                final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+
+                // Filter berdasarkan range tanggal
+                if (dateTime.isAfter(
+                      startDate.subtract(const Duration(days: 1)),
+                    ) &&
+                    dateTime.isBefore(endDate.add(const Duration(days: 1)))) {
+                  totalPenyiraman++;
+
+                  // Hitung durasi (dalam menit, konversi ke jam)
+                  if (value['duration'] != null) {
+                    final duration = (value['duration'] as num).toDouble();
+                    totalDurasi += duration / 60;
+
+                    // Estimasi penggunaan air (asumsi 2 liter/menit)
+                    totalAirUsed += duration * 2;
+                  }
+
+                  // Hitung penyiraman per hari
+                  final dayKey = DateFormat('EEE').format(dateTime);
+                  dailyIrrigation[dayKey] = (dailyIrrigation[dayKey] ?? 0) + 1;
+
+                  // Kategorikan tipe penyiraman
+                  final mode = value['mode']?.toString() ?? 'auto';
+                  if (mode == 'manual') {
+                    penyiramanManual++;
+                  } else {
+                    penyiramanOtomatis++;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error processing irrigation data: $e');
+          }
+        });
+      }
+
+      // Hitung statistik tambahan
+      double? maxSuhu, minSuhu, maxHumidity, minHumidity, maxSoil, minSoil;
+      double? avgLight, avgPh;
+
+      if (suhuList.isNotEmpty) {
+        maxSuhu = suhuList.reduce((a, b) => a > b ? a : b);
+        minSuhu = suhuList.reduce((a, b) => a < b ? a : b);
+      }
+      if (humidityList.isNotEmpty) {
+        maxHumidity = humidityList.reduce((a, b) => a > b ? a : b);
+        minHumidity = humidityList.reduce((a, b) => a < b ? a : b);
+      }
+      if (soilList.isNotEmpty) {
+        maxSoil = soilList.reduce((a, b) => a > b ? a : b);
+        minSoil = soilList.reduce((a, b) => a < b ? a : b);
+      }
+      if (lightList.isNotEmpty) {
+        avgLight = lightList.reduce((a, b) => a + b) / lightList.length;
+      }
+      if (phList.isNotEmpty) {
+        avgPh = phList.reduce((a, b) => a + b) / phList.length;
+      }
+
+      // Hitung rata-rata penyiraman per hari
+      final totalDays = endDate.difference(startDate).inDays + 1;
+      final avgPenyiramanPerHari = totalPenyiraman / totalDays;
+
+      // Jika tidak ada data, gunakan nilai default
+      if (suhuList.isEmpty) {
+        suhuList.add(25.3);
+      }
+      if (humidityList.isEmpty) {
+        humidityList.add(65.0);
       }
 
       setState(() {
@@ -130,16 +301,83 @@ class _ReportScreenState extends State<ReportScreen> {
               ? (humidityList.reduce((a, b) => a + b) / humidityList.length)
                     .toInt()
               : 65,
+          'avgSoil': soilList.isNotEmpty
+              ? (soilList.reduce((a, b) => a + b) / soilList.length)
+                    .toStringAsFixed(0)
+              : '1450',
+          'avgLight': avgLight?.toStringAsFixed(0) ?? '-',
+          'avgPh': avgPh?.toStringAsFixed(1) ?? '-',
+          'maxSuhu': maxSuhu?.toStringAsFixed(1) ?? '-',
+          'minSuhu': minSuhu?.toStringAsFixed(1) ?? '-',
+          'maxHumidity': maxHumidity?.toInt() ?? 0,
+          'minHumidity': minHumidity?.toInt() ?? 0,
+          'maxSoil': maxSoil?.toStringAsFixed(0) ?? '-',
+          'minSoil': minSoil?.toStringAsFixed(0) ?? '-',
+          'totalAirUsed': totalAirUsed.toStringAsFixed(1),
+          'penyiramanOtomatis': penyiramanOtomatis,
+          'penyiramanManual': penyiramanManual,
+          'avgPenyiramanPerHari': avgPenyiramanPerHari.toStringAsFixed(1),
+          'totalDays': totalDays,
           'dailyIrrigation': dailyIrrigation,
+          'weeklySuhu': weeklySuhu,
+          'weeklyHumidity': weeklyHumidity,
+          'weeklySoil': weeklySoil,
           'periodStart': DateFormat('dd MMM yyyy').format(startDate),
-          'periodEnd': DateFormat('dd MMM yyyy').format(now),
+          'periodEnd': DateFormat('dd MMM yyyy').format(endDate),
           'varietas': varietas,
+          'dataCount': suhuList.length,
         };
+        // Update _activeVarietas to match loaded data
+        _activeVarietas = varietas;
         _isLoadingData = false;
       });
     } catch (e) {
       debugPrint('Error loading report data: $e');
       setState(() => _isLoadingData = false);
+    }
+  }
+
+  Future<void> _showDateRangePicker() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: _customStartDate != null && _customEndDate != null
+          ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+          : DateTimeRange(
+              start: DateTime.now().subtract(const Duration(days: 30)),
+              end: DateTime.now(),
+            ),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: const Color(0xFF1B5E20),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black87,
+            ),
+            datePickerTheme: DatePickerThemeData(
+              headerBackgroundColor: const Color(0xFF1B5E20),
+              headerForegroundColor: Colors.white,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
+        _selectedPeriod = 'Custom';
+      });
+      await _loadReportData();
     }
   }
 
@@ -158,7 +396,6 @@ class _ReportScreenState extends State<ReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header dengan Export Button
             Row(
               children: [
                 Expanded(
@@ -188,47 +425,155 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
 
-            // Period Info
-            if (_reportData.isNotEmpty) ...[
-              const SizedBox(height: 12),
+            // Tampilkan peringatan jika belum ada varietas
+            if (_activeVarietas == null) ...[
+              const SizedBox(height: 20),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.calendar_today,
-                      size: 14,
-                      color: Colors.blue.shade700,
+                      Icons.info_outline,
+                      color: Colors.orange.shade700,
+                      size: 24,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${_reportData['periodStart']} - ${_reportData['periodEnd']}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Belum ada varietas yang dipilih',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Pilih varietas di menu Pengaturan untuk melihat laporan',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
             ],
+
+            if (_reportData.isNotEmpty && _activeVarietas != null) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  // Varietas Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.eco, size: 14, color: Colors.green.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          _activeVarietas!.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Period Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.purple.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.date_range,
+                          size: 14,
+                          color: Colors.purple.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Periode: $_selectedPeriod',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.purple.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Date Range Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 14,
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_reportData['periodStart']} - ${_reportData['periodEnd']}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 24),
 
-            // Period Selector
             _buildPeriodSelector(),
             const SizedBox(height: 20),
 
-            // Summary Cards
             _isLoadingData
                 ? const Center(
                     child: Padding(
@@ -285,15 +630,24 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Performance Overview
+            // Statistik Detail
+            _buildDetailStatsCard(),
+            const SizedBox(height: 20),
+
+            // Statistik Penyiraman
+            _buildIrrigationStatsCard(),
+            const SizedBox(height: 20),
+
+            // Range Sensor Data
+            _buildSensorRangeCard(),
+            const SizedBox(height: 20),
+
             _buildPerformanceCard(),
             const SizedBox(height: 20),
 
-            // Weekly Activity
             _buildWeeklyActivityCard(),
             const SizedBox(height: 20),
 
-            // Recommendations
             _buildRecommendationsCard(),
             const SizedBox(height: 20),
           ],
@@ -303,26 +657,85 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Widget _buildPeriodSelector() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _buildPeriodButton('Hari Ini'),
-          _buildPeriodButton('Minggu Ini'),
-          _buildPeriodButton('Bulan Ini'),
-        ],
-      ),
+          child: Row(
+            children: [
+              _buildPeriodButton('Hari Ini'),
+              _buildPeriodButton('Minggu Ini'),
+              _buildPeriodButton('Bulan Ini'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Tombol Custom Date Range
+        InkWell(
+          onTap: _showDateRangePicker,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: _selectedPeriod == 'Custom'
+                  ? const Color(0xFF1B5E20)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _selectedPeriod == 'Custom'
+                    ? const Color(0xFF1B5E20)
+                    : Colors.grey.shade300,
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.date_range,
+                  size: 18,
+                  color: _selectedPeriod == 'Custom'
+                      ? Colors.white
+                      : const Color(0xFF1B5E20),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _customStartDate != null && _customEndDate != null
+                      ? '${DateFormat('dd MMM').format(_customStartDate!)} - ${DateFormat('dd MMM yyyy').format(_customEndDate!)}'
+                      : 'Pilih Rentang Tanggal',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: _selectedPeriod == 'Custom'
+                        ? FontWeight.bold
+                        : FontWeight.w600,
+                    color: _selectedPeriod == 'Custom'
+                        ? Colors.white
+                        : Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -331,8 +744,13 @@ class _ReportScreenState extends State<ReportScreen> {
     return Expanded(
       child: GestureDetector(
         onTap: () {
-          setState(() => _selectedPeriod = period);
-          _loadReportData(); // Reload data saat periode berubah
+          setState(() {
+            _selectedPeriod = period;
+            // Reset custom date ketika memilih periode preset
+            _customStartDate = null;
+            _customEndDate = null;
+          });
+          _loadReportData();
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -592,6 +1010,395 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  // Widget Statistik Detail
+  Widget _buildDetailStatsCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.purple.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.analytics_outlined,
+                  color: Colors.purple.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Statistik Detail',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _buildStatRow(
+            'Total Hari Monitoring',
+            '${_reportData['totalDays'] ?? 0} hari',
+            Icons.today,
+          ),
+          const Divider(height: 24),
+          _buildStatRow(
+            'Data Sensor Tercatat',
+            '${_reportData['dataCount'] ?? 0} record',
+            Icons.sensors,
+          ),
+          const Divider(height: 24),
+          _buildStatRow(
+            'Rata-rata Penyiraman/Hari',
+            '${_reportData['avgPenyiramanPerHari'] ?? '0'} kali',
+            Icons.water_drop,
+          ),
+          const Divider(height: 24),
+          _buildStatRow(
+            'Total Penggunaan Air',
+            '${_reportData['totalAirUsed'] ?? '0'} liter',
+            Icons.opacity,
+          ),
+          if (_reportData['avgSoil'] != null &&
+              _reportData['avgSoil'] != '-') ...[
+            const Divider(height: 24),
+            _buildStatRow(
+              'Kelembapan Tanah',
+              '${_reportData['avgSoil']} ADC',
+              Icons.grass,
+            ),
+          ],
+          if (_reportData['avgLight'] != null &&
+              _reportData['avgLight'] != '-') ...[
+            const Divider(height: 24),
+            _buildStatRow(
+              'Intensitas Cahaya',
+              '${_reportData['avgLight']} lux',
+              Icons.wb_sunny,
+            ),
+          ],
+          if (_reportData['avgPh'] != null && _reportData['avgPh'] != '-') ...[
+            const Divider(height: 24),
+            _buildStatRow(
+              'pH Tanah',
+              _reportData['avgPh'] ?? '-',
+              Icons.science,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.grey.shade600, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Widget Statistik Penyiraman
+  Widget _buildIrrigationStatsCard() {
+    final total = _reportData['totalPenyiraman'] ?? 0;
+    final otomatis = _reportData['penyiramanOtomatis'] ?? 0;
+    final manual = _reportData['penyiramanManual'] ?? 0;
+    final percentOtomatis = total > 0 ? (otomatis / total * 100).round() : 0;
+    final percentManual = total > 0 ? (manual / total * 100).round() : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.cyan.shade50, Colors.blue.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.water_drop, color: Colors.blue.shade700, size: 28),
+              const SizedBox(width: 12),
+              const Text(
+                'Analisis Penyiraman',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildIrrigationTypeCard(
+                  'Otomatis',
+                  otomatis,
+                  percentOtomatis,
+                  Colors.green,
+                  Icons.settings_suggest,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildIrrigationTypeCard(
+                  'Manual',
+                  manual,
+                  percentManual,
+                  Colors.orange,
+                  Icons.touch_app,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIrrigationTypeCard(
+    String label,
+    int count,
+    int percent,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3), width: 2),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$count kali',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$percent%',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget Range Sensor
+  Widget _buildSensorRangeCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade50, Colors.teal.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.thermostat_outlined,
+                color: Colors.green.shade700,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Range Data Sensor',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (_reportData['maxSuhu'] != null && _reportData['maxSuhu'] != '-')
+            _buildRangeItem(
+              'Suhu',
+              _reportData['minSuhu'] ?? '-',
+              _reportData['maxSuhu'] ?? '-',
+              '°C',
+              Colors.red,
+              Icons.thermostat,
+            ),
+          const SizedBox(height: 16),
+          if (_reportData['maxHumidity'] != null &&
+              _reportData['maxHumidity'] != 0)
+            _buildRangeItem(
+              'Kelembapan Udara',
+              '${_reportData['minHumidity'] ?? 0}',
+              '${_reportData['maxHumidity'] ?? 0}',
+              '%',
+              Colors.blue,
+              Icons.water,
+            ),
+          const SizedBox(height: 16),
+          if (_reportData['maxSoil'] != null && _reportData['maxSoil'] != '-')
+            _buildRangeItem(
+              'Kelembapan Tanah',
+              _reportData['minSoil'] ?? '-',
+              _reportData['maxSoil'] ?? '-',
+              'ADC',
+              Colors.brown,
+              Icons.grass,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRangeItem(
+    String label,
+    String min,
+    String max,
+    String unit,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Min: ',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    Text(
+                      '$min$unit',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      'Max: ',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    Text(
+                      '$max$unit',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRecommendationsCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -676,7 +1483,9 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // Export Button Widget
+  // =========================
+  // EXPORT BUTTON
+  // =========================
   Widget _buildExportButton() {
     return PopupMenuButton<String>(
       icon: Container(
@@ -719,108 +1528,533 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // Export to PDF
+  // =========================
+  // PDF HELPERS (SMARTFARM STYLE)
+  // =========================
+  pw.Widget _pdfCard(pw.Widget child) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(14),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        borderRadius: pw.BorderRadius.circular(14),
+        border: pw.Border.all(color: PdfColors.grey200),
+      ),
+      child: child,
+    );
+  }
+
+  pw.Widget _pdfKV(String label, String value, {PdfColor? valueColor}) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+        ),
+        pw.SizedBox(height: 6),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 15,
+            fontWeight: pw.FontWeight.bold,
+            color: valueColor ?? PdfColors.black,
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfProgress(String label, int pct, PdfColor primary) {
+    final width = 460.0; // kira-kira lebar konten A4 margin 28
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(label, style: const pw.TextStyle(fontSize: 11)),
+            pw.Text(
+              '$pct%',
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+                color: primary,
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 6),
+        pw.Stack(
+          children: [
+            pw.Container(
+              height: 8,
+              width: width,
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey300,
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+            ),
+            pw.Container(
+              height: 8,
+              width: width * pct / 100,
+              decoration: pw.BoxDecoration(
+                color: primary,
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfDetailRow(String label, String value) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+        ),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 10,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.black,
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfRangeRow(String label, String min, String max) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+        ),
+        pw.Row(
+          children: [
+            pw.Text(
+              'Min: ',
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              min,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue700,
+              ),
+            ),
+            pw.SizedBox(width: 12),
+            pw.Text(
+              'Max: ',
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              max,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.red700,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // =========================
+  // EXPORT TO PDF (CUSTOM SMARTFARM)
+  // =========================
   Future<void> _exportToPDF() async {
     try {
       final pdf = pw.Document();
 
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Header
-                pw.Text(
-                  'Laporan Pertanian CHAOS',
-                  style: pw.TextStyle(
-                    fontSize: 24,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                  'Periode: ${_reportData['periodStart']} - ${_reportData['periodEnd']}',
-                  style: const pw.TextStyle(fontSize: 12),
-                ),
-                pw.Text(
-                  'Varietas: ${_reportData['varietas']}',
-                  style: const pw.TextStyle(fontSize: 12),
-                ),
-                pw.SizedBox(height: 20),
+      final primary = PdfColor.fromInt(0xFF1B5E20);
+      final bg = PdfColor.fromInt(0xFFF6FBF7);
 
-                // Summary
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(16),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: const pw.BorderRadius.all(
-                      pw.Radius.circular(8),
+      // Load fonts from assets with fallback
+      pw.Font? fontReg;
+      pw.Font? fontBold;
+      try {
+        fontReg = pw.Font.ttf(
+          await rootBundle.load('assets/fonts/Poppins-Regular.ttf'),
+        );
+        fontBold = pw.Font.ttf(
+          await rootBundle.load('assets/fonts/Poppins-Bold.ttf'),
+        );
+      } catch (e) {
+        debugPrint('Font loading failed, using default: $e');
+      }
+
+      final theme = fontReg != null && fontBold != null
+          ? pw.ThemeData.withFont(base: fontReg, bold: fontBold)
+          : pw.ThemeData.base();
+
+      // Load logo with fallback
+      pw.ImageProvider? logo;
+      try {
+        final logoBytes = (await rootBundle.load(
+          'assets/images/logo.png',
+        )).buffer.asUint8List();
+        logo = pw.MemoryImage(logoBytes);
+      } catch (e) {
+        debugPrint('Logo loading failed: $e');
+      }
+
+      final periodStart = (_reportData['periodStart'] ?? '-').toString();
+      final periodEnd = (_reportData['periodEnd'] ?? '-').toString();
+      final varietas = (_reportData['varietas'] ?? 'default').toString();
+
+      final totalPenyiraman = (_reportData['totalPenyiraman'] ?? 0).toString();
+      final totalDurasi = (_reportData['totalDurasi'] ?? '0').toString();
+      final avgSuhu = (_reportData['avgSuhu'] ?? '0').toString();
+      final avgHumidity = (_reportData['avgHumidity'] ?? 0).toString();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageTheme: pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+            theme: theme,
+            buildBackground: (_) => pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Container(color: bg),
+            ),
+          ),
+          header: (_) => pw.Container(
+            padding: const pw.EdgeInsets.all(14),
+            decoration: pw.BoxDecoration(
+              color: primary,
+              borderRadius: pw.BorderRadius.circular(14),
+            ),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                if (logo != null) ...[
+                  pw.Container(
+                    width: 34,
+                    height: 34,
+                    padding: const pw.EdgeInsets.all(4),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.white,
+                      borderRadius: pw.BorderRadius.circular(10),
                     ),
+                    child: pw.Image(logo),
                   ),
+                  pw.SizedBox(width: 10),
+                ],
+                pw.Expanded(
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        'Ringkasan Data',
+                        'LAPORAN SMARTFARM',
                         style: pw.TextStyle(
-                          fontSize: 18,
+                          color: PdfColors.white,
                           fontWeight: pw.FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
-                      pw.SizedBox(height: 12),
-                      _buildPDFRow(
-                        'Total Penyiraman',
-                        '${_reportData['totalPenyiraman']} kali',
-                      ),
-                      _buildPDFRow(
-                        'Durasi Total',
-                        '${_reportData['totalDurasi']} jam',
-                      ),
-                      _buildPDFRow(
-                        'Rata-rata Suhu',
-                        '${_reportData['avgSuhu']}°C',
-                      ),
-                      _buildPDFRow(
-                        'Rata-rata Kelembapan',
-                        '${_reportData['avgHumidity']}%',
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        '$periodStart - $periodEnd  •  Varietas: $varietas  •  Periode: $_selectedPeriod',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 9,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                pw.SizedBox(height: 20),
-
-                // Performance
-                pw.Text(
-                  'Performa Sistem',
-                  style: pw.TextStyle(
-                    fontSize: 16,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 12),
-                _buildPDFRow('Efisiensi Penyiraman', '87%'),
-                _buildPDFRow('Kondisi Tanaman', '92%'),
-                _buildPDFRow('Stabilitas Sensor', '95%'),
-
-                pw.SizedBox(height: 20),
+              ],
+            ),
+          ),
+          footer: (ctx) => pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 10),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
                 pw.Text(
                   'Generated: ${DateFormat('dd MMM yyyy HH:mm').format(DateTime.now())}',
-                  style: const pw.TextStyle(
-                    fontSize: 10,
-                    color: PdfColors.grey600,
+                  style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                ),
+                pw.Text(
+                  'Hal ${ctx.pageNumber}/${ctx.pagesCount}',
+                  style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                ),
+              ],
+            ),
+          ),
+          build: (_) => [
+            pw.SizedBox(height: 14),
+
+            pw.Text(
+              'Ringkasan',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+
+            // Grid 2x2
+            pw.Row(
+              children: [
+                pw.Expanded(
+                  child: _pdfCard(
+                    _pdfKV(
+                      'Total Penyiraman',
+                      '$totalPenyiraman kali',
+                      valueColor: primary,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(width: 10),
+                pw.Expanded(
+                  child: _pdfCard(
+                    _pdfKV(
+                      'Durasi Total',
+                      '$totalDurasi jam',
+                      valueColor: primary,
+                    ),
                   ),
                 ),
               ],
-            );
-          },
+            ),
+            pw.SizedBox(height: 10),
+            pw.Row(
+              children: [
+                pw.Expanded(
+                  child: _pdfCard(
+                    _pdfKV(
+                      'Rata-rata Suhu',
+                      '$avgSuhu °C',
+                      valueColor: primary,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(width: 10),
+                pw.Expanded(
+                  child: _pdfCard(
+                    _pdfKV(
+                      'Rata-rata Kelembapan',
+                      '$avgHumidity %',
+                      valueColor: primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            pw.SizedBox(height: 16),
+
+            // Statistik Detail
+            pw.Text(
+              'Statistik Detail',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            _pdfCard(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _pdfDetailRow(
+                    'Total Hari',
+                    '${_reportData['totalDays'] ?? 0} hari',
+                  ),
+                  pw.SizedBox(height: 8),
+                  _pdfDetailRow(
+                    'Data Sensor',
+                    '${_reportData['dataCount'] ?? 0} record',
+                  ),
+                  pw.SizedBox(height: 8),
+                  _pdfDetailRow(
+                    'Rata-rata/Hari',
+                    '${_reportData['avgPenyiramanPerHari'] ?? '0'} kali',
+                  ),
+                  pw.SizedBox(height: 8),
+                  _pdfDetailRow(
+                    'Penggunaan Air',
+                    '${_reportData['totalAirUsed'] ?? '0'} liter',
+                  ),
+                  if (_reportData['avgSoil'] != null &&
+                      _reportData['avgSoil'] != '-') ...[
+                    pw.SizedBox(height: 8),
+                    _pdfDetailRow(
+                      'Kelembapan Tanah',
+                      '${_reportData['avgSoil']} ADC',
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            pw.SizedBox(height: 16),
+
+            // Analisis Penyiraman
+            pw.Text(
+              'Analisis Penyiraman',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Row(
+              children: [
+                pw.Expanded(
+                  child: _pdfCard(
+                    pw.Column(
+                      children: [
+                        pw.Text(
+                          'Otomatis',
+                          style: pw.TextStyle(
+                            fontSize: 10,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          '${_reportData['penyiramanOtomatis'] ?? 0} kali',
+                          style: pw.TextStyle(
+                            fontSize: 14,
+                            fontWeight: pw.FontWeight.bold,
+                            color: primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                pw.SizedBox(width: 10),
+                pw.Expanded(
+                  child: _pdfCard(
+                    pw.Column(
+                      children: [
+                        pw.Text(
+                          'Manual',
+                          style: pw.TextStyle(
+                            fontSize: 10,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          '${_reportData['penyiramanManual'] ?? 0} kali',
+                          style: pw.TextStyle(
+                            fontSize: 14,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            pw.SizedBox(height: 16),
+
+            // Range Sensor
+            if (_reportData['maxSuhu'] != null &&
+                _reportData['maxSuhu'] != '-') ...[
+              pw.Text(
+                'Range Data Sensor',
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              _pdfCard(
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    _pdfRangeRow(
+                      'Suhu',
+                      '${_reportData['minSuhu']}°C',
+                      '${_reportData['maxSuhu']}°C',
+                    ),
+                    if (_reportData['maxHumidity'] != null &&
+                        _reportData['maxHumidity'] != 0) ...[
+                      pw.SizedBox(height: 8),
+                      _pdfRangeRow(
+                        'Kelembapan',
+                        '${_reportData['minHumidity']}%',
+                        '${_reportData['maxHumidity']}%',
+                      ),
+                    ],
+                    if (_reportData['maxSoil'] != null &&
+                        _reportData['maxSoil'] != '-') ...[
+                      pw.SizedBox(height: 8),
+                      _pdfRangeRow(
+                        'Tanah',
+                        '${_reportData['minSoil']}',
+                        '${_reportData['maxSoil']}',
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 16),
+            ],
+
+            pw.Text(
+              'Performa Sistem',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            _pdfCard(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _pdfProgress('Efisiensi Penyiraman', 87, primary),
+                  pw.SizedBox(height: 10),
+                  _pdfProgress('Kondisi Tanaman', 92, primary),
+                  pw.SizedBox(height: 10),
+                  _pdfProgress('Stabilitas Sensor', 95, primary),
+                ],
+              ),
+            ),
+
+            // Page break sebelum rekomendasi
+            pw.NewPage(),
+
+            pw.SizedBox(height: 14),
+
+            pw.Text(
+              'Rekomendasi',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            _pdfCard(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    '• Efisiensi penyiraman baik, pertahankan pola saat ini',
+                    style: const pw.TextStyle(fontSize: 11),
+                  ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    '• Perhatikan kelembapan tanah pada siang hari',
+                    style: const pw.TextStyle(fontSize: 11),
+                  ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    '• Suhu dan kelembapan dalam rentang ideal',
+                    style: const pw.TextStyle(fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
 
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
-      );
+      await Printing.layoutPdf(onLayout: (_) async => pdf.save());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -843,29 +2077,14 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  pw.Widget _buildPDFRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 8),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 12)),
-          pw.Text(
-            value,
-            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Export to Excel
+  // =========================
+  // EXPORT TO EXCEL (tetap)
+  // =========================
   Future<void> _exportToExcel() async {
     try {
       var excel = ex.Excel.createExcel();
       ex.Sheet sheetObject = excel['Laporan'];
 
-      // Header
       sheetObject.appendRow([ex.TextCellValue('LAPORAN PERTANIAN CHAOS')]);
       sheetObject.appendRow([
         ex.TextCellValue(
@@ -877,7 +2096,6 @@ class _ReportScreenState extends State<ReportScreen> {
       ]);
       sheetObject.appendRow([ex.TextCellValue('')]);
 
-      // Summary Data
       sheetObject.appendRow([ex.TextCellValue('Ringkasan Data')]);
       sheetObject.appendRow([
         ex.TextCellValue('Metrik'),
@@ -899,9 +2117,82 @@ class _ReportScreenState extends State<ReportScreen> {
         ex.TextCellValue('Rata-rata Kelembapan'),
         ex.TextCellValue('${_reportData['avgHumidity']}%'),
       ]);
+      if (_reportData['avgSoil'] != null && _reportData['avgSoil'] != '-') {
+        sheetObject.appendRow([
+          ex.TextCellValue('Kelembapan Tanah'),
+          ex.TextCellValue('${_reportData['avgSoil']} ADC'),
+        ]);
+      }
       sheetObject.appendRow([ex.TextCellValue('')]);
 
-      // Performance Data
+      sheetObject.appendRow([ex.TextCellValue('Statistik Detail')]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Metrik'),
+        ex.TextCellValue('Nilai'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Total Hari Monitoring'),
+        ex.TextCellValue('${_reportData['totalDays'] ?? 0} hari'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Data Sensor Tercatat'),
+        ex.TextCellValue('${_reportData['dataCount'] ?? 0} record'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Rata-rata Penyiraman/Hari'),
+        ex.TextCellValue('${_reportData['avgPenyiramanPerHari'] ?? '0'} kali'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Total Penggunaan Air'),
+        ex.TextCellValue('${_reportData['totalAirUsed'] ?? '0'} liter'),
+      ]);
+      sheetObject.appendRow([ex.TextCellValue('')]);
+
+      sheetObject.appendRow([ex.TextCellValue('Analisis Penyiraman')]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Tipe'),
+        ex.TextCellValue('Jumlah'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Penyiraman Otomatis'),
+        ex.TextCellValue('${_reportData['penyiramanOtomatis'] ?? 0} kali'),
+      ]);
+      sheetObject.appendRow([
+        ex.TextCellValue('Penyiraman Manual'),
+        ex.TextCellValue('${_reportData['penyiramanManual'] ?? 0} kali'),
+      ]);
+      sheetObject.appendRow([ex.TextCellValue('')]);
+
+      if (_reportData['maxSuhu'] != null && _reportData['maxSuhu'] != '-') {
+        sheetObject.appendRow([ex.TextCellValue('Range Data Sensor')]);
+        sheetObject.appendRow([
+          ex.TextCellValue('Sensor'),
+          ex.TextCellValue('Min'),
+          ex.TextCellValue('Max'),
+        ]);
+        sheetObject.appendRow([
+          ex.TextCellValue('Suhu'),
+          ex.TextCellValue('${_reportData['minSuhu']}°C'),
+          ex.TextCellValue('${_reportData['maxSuhu']}°C'),
+        ]);
+        if (_reportData['maxHumidity'] != null &&
+            _reportData['maxHumidity'] != 0) {
+          sheetObject.appendRow([
+            ex.TextCellValue('Kelembapan Udara'),
+            ex.TextCellValue('${_reportData['minHumidity']}%'),
+            ex.TextCellValue('${_reportData['maxHumidity']}%'),
+          ]);
+        }
+        if (_reportData['maxSoil'] != null && _reportData['maxSoil'] != '-') {
+          sheetObject.appendRow([
+            ex.TextCellValue('Kelembapan Tanah'),
+            ex.TextCellValue('${_reportData['minSoil']} ADC'),
+            ex.TextCellValue('${_reportData['maxSoil']} ADC'),
+          ]);
+        }
+        sheetObject.appendRow([ex.TextCellValue('')]);
+      }
+
       sheetObject.appendRow([ex.TextCellValue('Performa Sistem')]);
       sheetObject.appendRow([
         ex.TextCellValue('Metrik'),
@@ -920,7 +2211,6 @@ class _ReportScreenState extends State<ReportScreen> {
         ex.TextCellValue('95%'),
       ]);
 
-      // Save file
       final directory = await getApplicationDocumentsDirectory();
       final fileName =
           'Laporan_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.xlsx';
@@ -938,9 +2228,7 @@ class _ReportScreenState extends State<ReportScreen> {
             action: SnackBarAction(
               label: 'Buka',
               textColor: Colors.white,
-              onPressed: () {
-                // Implement open file
-              },
+              onPressed: () {},
             ),
           ),
         );

@@ -167,7 +167,7 @@ class NotificationBadgeStream extends StatelessWidget {
         }
 
         // Hitung yang belum dibaca dari 50 terbaru
-        bool _isReadValue(dynamic v) =>
+        bool isReadValue0(dynamic v) =>
             v == true || v == 'true' || v == 1 || v == '1';
 
         final cache = NotificationReadCache.instance;
@@ -175,7 +175,7 @@ class NotificationBadgeStream extends StatelessWidget {
         for (final w in allWarnings) {
           final isReadValue = w['isRead'];
           final id = (w['id'] ?? '').toString();
-          final isReadDb = _isReadValue(isReadValue);
+          final isReadDb = isReadValue0(isReadValue);
           final isReadLocal = id.isNotEmpty && cache.contains(id);
           if (!(isReadDb || isReadLocal)) {
             unreadCount++;
