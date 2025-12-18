@@ -408,11 +408,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
+ @override
+Widget build(BuildContext context) {
+  final belumPilih = activeVarietas == null || activeVarietas!.isEmpty;
 
-    return Container(
+  return Scaffold( // Tambahkan Scaffold jika belum ada
+    body: Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [Colors.green.shade50, Colors.white],
@@ -450,8 +451,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // Weather & Location Card with Real Weather API
   Widget _buildWeatherLocationCard() {
@@ -877,110 +879,123 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Modern Header with greeting and date
-  Widget _buildModernHeader(BuildContext context) {
-    final now = DateTime.now();
-    final hour = now.hour;
-    String greeting = 'Good Morning';
-    if (hour >= 12 && hour < 18) greeting = 'Good Afternoon';
-    if (hour >= 18) greeting = 'Good Evening';
+Widget _buildModernHeader(BuildContext context) {
+  final now = DateTime.now();
+  final hour = now.hour;
+  String greeting = 'Good Morning';
+  if (hour >= 12 && hour < 18) greeting = 'Good Afternoon';
+  if (hour >= 18) greeting = 'Good Evening';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Header utama dalam Column untuk menghindari masalah layout Row
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            greeting,
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Smart Farmer',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+
+      // Container untuk location selector dan manage button
+      if (userLocations.isNotEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.green.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    greeting,
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Smart Farmer',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  Expanded(
+                    child: Text(
+                      'Lokasi Aktif',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/locations');
+                    },
+                    icon: Icon(Icons.settings, color: Colors.green.shade700),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Kelola Lokasi',
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-            // MULTI-LOKASI: Location Selector Dropdown
-            if (userLocations.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 8),
+              // Dropdown dengan fixed height
+              SizedBox(
+                height: 50, // Fixed height untuk menghindari layout error
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: activeLocationId,
+                    isExpanded: true,
                     icon: Icon(
                       Icons.arrow_drop_down,
                       color: Colors.green.shade700,
+                      size: 24,
                     ),
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.green.shade800,
                     ),
                     items: userLocations.map((loc) {
                       return DropdownMenuItem<String>(
                         value: loc['id'],
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.location_on,
-                              size: 16,
-                              color: Colors.green.shade700,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    loc['name']!,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (loc['address'] != null &&
-                                      loc['address']!.isNotEmpty &&
-                                      loc['address'] != 'Unknown Location')
-                                    Text(
-                                      loc['address']!,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                ],
+                            Text(
+                              loc['name']!,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            if (loc['address'] != null &&
+                                loc['address']!.isNotEmpty &&
+                                loc['address'] != 'Unknown Location')
+                              Text(
+                                loc['address']!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                           ],
                         ),
                       );
@@ -993,192 +1008,150 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-            // Tombol Manage Locations
-            IconButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/locations');
-              },
-              icon: Icon(Icons.settings, color: Colors.grey.shade700),
-              tooltip: 'Kelola Lokasi',
+            ],
+          ),
+        ),
+
+      const SizedBox(height: 12),
+
+      // Varietas Selection Card - Perbaikan untuk layout yang lebih stabil
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        // Card Info Lokasi (address)
-        if (userLocations.isNotEmpty)
-          Builder(
-            builder: (context) {
-              final currentLocation = userLocations.firstWhere(
-                (loc) => loc['id'] == activeLocationId,
-                orElse: () => {'id': '', 'name': '', 'address': ''},
-              );
-              final address = currentLocation['address'];
-              if (address != null &&
-                  address.isNotEmpty &&
-                  address != 'Unknown Location') {
-                return Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.shade200),
+        child: activeVarietas != null
+            ? Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.spa,
+                      color: Colors.green.shade700,
+                      size: 24,
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.place, color: Colors.blue.shade700, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          address,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Currently Growing',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.blue.shade900,
+                            color: Colors.grey.shade600,
                           ),
-                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          activeVarietas!.replaceAll('_', ' ').toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
                           overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        const SizedBox(height: 8),
-        Row(children: []),
-        const SizedBox(height: 16),
-        // Varietas Selection Card
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/settings');
+                    },
+                    icon: Icon(Icons.edit, color: Colors.green.shade700),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    onPressed: () async {
+                      _showDeleteConfirmation(context);
+                    },
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.eco_outlined,
+                      color: Colors.orange.shade700,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'No Variety Selected',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Choose what you want to plant',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/settings');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      minimumSize: const Size(80, 40), // Fixed minimum size
+                    ),
+                    child: const Text('Select'),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: activeVarietas != null
-              ? Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.spa,
-                        color: Colors.green.shade700,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Currently Growing',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            activeVarietas!.replaceAll('_', ' ').toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/settings');
-                      },
-                      icon: Icon(Icons.edit, color: Colors.green.shade700),
-                      tooltip: 'Change Variety',
-                    ),
-                    IconButton(
-                      onPressed: () async {
-                        print('🔴 DELETE ICON BUTTON PRESSED!');
-                        _showDeleteConfirmation(context);
-                      },
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      tooltip: 'Hapus Varietas',
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.eco_outlined,
-                        color: Colors.orange.shade700,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'No Variety Selected',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Choose what you want to plant',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/settings');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Select'),
-                    ),
-                  ],
-                ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   // Plant Health Card - large card with image, circular progress
   Widget _buildPlantHealthCard() {
