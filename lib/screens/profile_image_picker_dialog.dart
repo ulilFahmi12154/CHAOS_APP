@@ -4,7 +4,7 @@ class ProfileImagePickerDialog extends StatefulWidget {
   final List<String> profileImages;
   final String currentPhoto;
   final String defaultProfile;
-  const ProfileImagePickerDialog({
+  const ProfileImagePickerDialog({super.key, 
     required this.profileImages,
     required this.currentPhoto,
     required this.defaultProfile,

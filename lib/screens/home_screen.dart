@@ -1004,7 +1004,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         // Card Info Lokasi (address)
-        if (userLocations.isNotEmpty && activeLocationId != null)
+        if (userLocations.isNotEmpty)
           Builder(
             builder: (context) {
               final currentLocation = userLocations.firstWhere(
@@ -1264,6 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             BoxShadow(
                               color: Colors.black.withOpacity(0.1),
                               blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
@@ -1749,6 +1750,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: color.withOpacity(0.2),
                         blurRadius: 8,
                         spreadRadius: 0,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -2384,10 +2386,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 4. Hapus dari path global Wokwi agar ESP32 berhenti membaca
       // 1. Set empty string untuk trigger ESP32 deletion detection
-    await db
-    .child('smartfarm/locations/$activeLocationId/active_varietas')
-    .set('');  // ← UBAH dari .remove() jadi .set('')
-print('  ✓ active_varietas di-reset (ESP32 akan detect deletion)');
+      await db
+          .child('smartfarm/locations/$activeLocationId/active_varietas')
+          .set(''); // ← UBAH dari .remove() jadi .set('')
+      print('  ✓ active_varietas di-reset (ESP32 akan detect deletion)');
 
       print('✅ Semua path berhasil dihapus!');
 
@@ -3224,10 +3226,12 @@ print('  ✓ active_varietas di-reset (ESP32 akan detect deletion)');
             ),
           );
         } else if (title.toLowerCase().contains('tanaman')) {
-          Navigator.push(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => const KenaliTanamanmuScreen(),
+              builder: (context) => const MainNavigationScreen(
+                initialIndex: 8, // Kenali Tanamanmu
+              ),
             ),
           );
         }
@@ -3295,10 +3299,12 @@ print('  ✓ active_varietas di-reset (ESP32 akan detect deletion)');
                     ),
                   );
                 } else if (title.toLowerCase().contains('tanaman')) {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const KenaliTanamanmuScreen(),
+                      builder: (context) => const MainNavigationScreen(
+                        initialIndex: 8, // Kenali Tanamanmu
+                      ),
                     ),
                   );
                 }

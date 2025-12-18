@@ -141,6 +141,8 @@ class _NutrientRecommendationScreenState
         'dosage': '-',
         'frequency': '-',
         'tips': [],
+        'icon': Icons.info_outline,
+        'color': Colors.grey,
       };
     }
 
@@ -525,7 +527,7 @@ class _NutrientRecommendationScreenState
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '🎯 Threshold NPK otomatis menyesuaikan fase $fase (${umurHari} hari) untuk hasil optimal',
+                            '🎯 Threshold NPK otomatis menyesuaikan fase $fase ($umurHari hari) untuk hasil optimal',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.blue.shade800,
@@ -1948,7 +1950,9 @@ class _NutrientRecommendationScreenState
                   ],
                 ),
                 const SizedBox(height: 8),
-                ...(recommendation['tips'] as List<String>).map((tip) {
+                ...((recommendation['tips'] as List<dynamic>?) ?? []).map((
+                  tip,
+                ) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
@@ -1966,7 +1970,7 @@ class _NutrientRecommendationScreenState
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            tip,
+                            tip.toString(),
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey.shade700,
@@ -1977,7 +1981,7 @@ class _NutrientRecommendationScreenState
                       ],
                     ),
                   );
-                }).toList(),
+                }),
               ],
             ),
           ),

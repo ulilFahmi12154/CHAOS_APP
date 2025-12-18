@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // Validate Firestore data structure
           final data = userDoc.data();
-          if (data == null || data is! Map<String, dynamic>) {
+          if (data == null) {
             throw Exception('Invalid Firestore data structure');
           }
 
@@ -178,8 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       label: "Masukkan Email",
                       icon: Icons.email_outlined,
                       onChanged: (_) {
-                        if (_loginError != null)
+                        if (_loginError != null) {
                           setState(() => _loginError = null);
+                        }
                       },
                     ),
                     const SizedBox(height: 15),
@@ -189,8 +190,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       icon: Icons.lock_outline,
                       obscure: true,
                       onChanged: (_) {
-                        if (_loginError != null)
+                        if (_loginError != null) {
                           setState(() => _loginError = null);
+                        }
                       },
                     ),
                     // Centered login error shown below password field

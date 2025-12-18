@@ -1943,7 +1943,8 @@ class _HistoryScreenState extends State<HistoryScreen>
     return StreamBuilder<DatabaseEvent>(
       stream: FirebaseDatabase.instance
           .ref('smartfarm/locations/$activeLocationId/waktu_tanam')
-          .onValue,
+          .onValue
+          .asBroadcastStream(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
           return const Center(child: Text('Belum ada data tanam'));

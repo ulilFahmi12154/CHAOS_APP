@@ -9,6 +9,7 @@ import 'profile_screen.dart';
 import 'notifikasi_screen.dart';
 import 'report_screen.dart';
 import 'nutrient_recommendation_screen.dart';
+import 'plant_detail_screen.dart';
 import '../widgets/tour_overlay.dart';
 import '../widgets/notification_badge.dart';
 
@@ -51,7 +52,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // List semua screen dengan index yang jelas
   // Bottom Nav (0-4): Kontrol, Histori, Dashboard, Laporan, Pengaturan
   // Header (5-6): Profile, Notifikasi
-  // Additional (7): Nutrient Recommendation
+  // Additional (7-8): Nutrient Recommendation, Kenali Tanamanmu
   List<Widget> get _screens => [
     const KontrolScreen(), // 0 - Bottom Nav (Kontrol)
     HistoryScreen(
@@ -63,6 +64,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const ProfileScreen(), // 5 - Header Left (Profile) ⚠️
     const NotifikasiScreen(), // 6 - Header Right (Notifikasi) ⚠️
     const NutrientRecommendationScreen(), // 7 - Nutrient Recommendation
+    const KenaliTanamanmuScreen(), // 8 - Kenali Tanamanmu
   ];
 
   bool _hasProcessedArgs = false;

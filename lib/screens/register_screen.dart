@@ -241,8 +241,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       obscure: true,
                       onChanged: (v) {
                         _updatePasswordIndicators(v);
-                        if (_registerError != null)
+                        if (_registerError != null) {
                           setState(() => _registerError = null);
+                        }
                       },
                       focusNode: _passFocus,
                     ),
@@ -270,8 +271,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       icon: Icons.lock_outline,
                       obscure: true,
                       onChanged: (_) {
-                        if (_registerError != null)
+                        if (_registerError != null) {
                           setState(() => _registerError = null);
+                        }
                       },
                     ),
                     // Centered register error shown below confirmation field

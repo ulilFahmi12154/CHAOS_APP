@@ -593,53 +593,77 @@ class _KontrolScreenState extends State<KontrolScreen> {
   Widget _buildHeaderCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.green.shade600,
-            Colors.green.shade400,
-            Colors.green.shade300,
+            const Color(0xFF1B5E20),
+            const Color(0xFF2E7D32),
+            const Color(0xFF4CAF50),
           ],
-          stops: const [0.0, 0.75, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.shade400.withOpacity(0.6),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-            spreadRadius: 2,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: const Color(0xFF2E7D32).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text(
-            'Kontrol Sistem Irigasi',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 2,
+              ),
+            ),
+            child: const Icon(
+              Icons.settings_input_component,
               color: Colors.white,
-              letterSpacing: 0.5,
+              size: 32,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Kelola pompa dan mode otomatis/manual',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.95),
-              letterSpacing: 0.3,
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kontrol',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Kelola pompa dan mode otomatis/manual',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.water_drop, color: Colors.white, size: 24),
           ),
         ],
       ),
@@ -719,7 +743,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   return Switch(
                     value: isAuto,
                     onChanged: _toggleMode,
-                    activeColor: Colors.green,
+                    activeThumbColor: Colors.green,
                   );
                 },
               ),
@@ -912,6 +936,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                               color: Colors.blue.withOpacity(0.4),
                               blurRadius: 20,
                               spreadRadius: 5,
+                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
@@ -1078,6 +1103,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                             : Colors.grey.withOpacity(0.3),
                                         blurRadius: isOn ? 30 : 15,
                                         spreadRadius: isOn ? 8 : 2,
+                                        offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
@@ -1135,6 +1161,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                               blurRadius: isOn ? 10 : 5,
                                               spreadRadius: isOn ? 2 : 0,
+                                              offset: const Offset(0, 2),
                                             ),
                                           ],
                                         ),
@@ -1218,6 +1245,21 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                           : () {
                                               _togglePompa(true);
                                             },
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                      ),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1241,21 +1283,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                             ),
                                           ],
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        minimumSize: const Size.fromHeight(48),
-                                        backgroundColor: Colors.transparent,
-                                        foregroundColor: Colors.white,
-                                        shadowColor: Colors.transparent,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
                                         ),
                                       ),
                                     ),
@@ -1292,6 +1319,21 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                           : () {
                                               _togglePompa(false);
                                             },
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                      ),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1312,21 +1354,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                             ),
                                           ],
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        minimumSize: const Size.fromHeight(48),
-                                        backgroundColor: Colors.transparent,
-                                        foregroundColor: Colors.white,
-                                        shadowColor: Colors.transparent,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
                                         ),
                                       ),
                                     ),

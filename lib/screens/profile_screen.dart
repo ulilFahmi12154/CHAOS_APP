@@ -12,8 +12,7 @@ class CriteriaRow extends StatelessWidget {
   final bool ok;
   final String text;
 
-  const CriteriaRow({Key? key, required this.ok, required this.text})
-    : super(key: key);
+  const CriteriaRow({super.key, required this.ok, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool hasDigit = false;
     bool hasSymbol = false;
 
-    List<String> _passwordIssues(String password) {
+    List<String> passwordIssues(String password) {
       final issues = <String>[];
       if (password.length < 8) {
         issues.add('• Minimal 8 karakter');
@@ -206,7 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     setStateDialog(() => errorMsg = 'Semua kolom wajib diisi');
                     return;
                   }
-                  final issues = _passwordIssues(newPass);
+                  final issues = passwordIssues(newPass);
                   if (issues.isNotEmpty) {
                     setStateDialog(
                       () => errorMsg =
@@ -237,9 +236,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   } on FirebaseAuthException catch (e) {
                     String msg = 'Gagal mengubah sandi';
-                    if (e.code == 'wrong-password')
+                    if (e.code == 'wrong-password') {
                       msg = 'Sandi lama salah';
-                    else if (e.code == 'weak-password')
+                    } else if (e.code == 'weak-password')
                       msg = 'Sandi baru terlalu lemah';
                     else if (e.code == 'requires-recent-login')
                       msg = 'Silakan login ulang dan coba lagi';
@@ -258,77 +257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String? _photoUrl;
-  bool _uploading = false;
-
-  // Helper method to show date picker for waktu_tanam
-  Future<void> _editWaktuTanam(String uid, int? currentWaktuTanam) async {
-    final initialDate = currentWaktuTanam != null
-        ? DateTime.fromMillisecondsSinceEpoch(currentWaktuTanam)
-        : DateTime.now();
-
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      helpText: 'Pilih Tanggal Tanam',
-      confirmText: 'Simpan',
-      cancelText: 'Batal',
-    );
-
-    if (picked != null) {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'waktu_tanam': picked.millisecondsSinceEpoch,
-      });
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Waktu tanam berhasil diupdate'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    }
-  }
-
-  // Helper method to reset waktu_tanam (panen)
-  Future<void> _resetWaktuTanam(String uid) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Waktu Tanam?'),
-        content: const Text(
-          'Apakah Anda sudah panen dan ingin memulai siklus tanam baru?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ya, Reset'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'waktu_tanam': DateTime.now().millisecondsSinceEpoch,
-      });
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Siklus tanam baru dimulai!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    }
-  }
+  final bool _uploading = false;
 
   static const List<String> jenisCabaiList = [
     'Cabai Rawit',
@@ -443,10 +372,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Batal',
-                style: TextStyle(color: Colors.grey),
-              ),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, selectedValue),
@@ -550,32 +476,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final data = snapshot.data!;
               final nama = data['nama'] ?? '-';
               final email = user.email ?? '-';
-              final waktuTanam = data['waktu_tanam'] as int?;
-
-              // Hitung umur tanaman
-              int? umurHari;
-              String fase = '-';
-              if (waktuTanam != null) {
-                final tanamDate = DateTime.fromMillisecondsSinceEpoch(
-                  waktuTanam,
-                );
-                umurHari = DateTime.now().difference(tanamDate).inDays + 1;
-
-                // Tentukan fase berdasarkan umur
-                if (umurHari <= 30) {
-                  fase = 'Vegetatif';
-                } else if (umurHari <= 60) {
-                  fase = 'Generatif';
-                } else if (umurHari <= 70) {
-                  fase = 'Pembungaan';
-                } else if (umurHari <= 90) {
-                  fase = 'Pembuahan';
-                } else {
-                  fase = 'Siap Panen';
-                }
-              }
-              // Use fase variable to prevent warning
-              final faseText = fase;
 
               // FIX membaca url dengan benar
               // Default profile image
@@ -599,609 +499,474 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header Profile - Simple like home screen
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Profile Pengguna',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
+                      // Header Profile - Style konsisten dengan History
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF1B5E20),
+                              const Color(0xFF2E7D32),
+                              const Color(0xFF4CAF50),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Kelola akun dan gambar profile',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade600,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF2E7D32).withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                    // Foto Profil
-                    Center(
-                      child: Column(
-                        children: [
-                          _uploading
-                              ? Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.green.shade700,
-                                        Colors.green.shade400,
-                                        Colors.green.shade200,
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.green.withOpacity(0.3),
-                                        blurRadius: 15,
-                                        offset: const Offset(0, 5),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.white,
-                                    ),
-                                    padding: const EdgeInsets.all(3),
-                                    child: const CircleAvatar(
-                                      radius: 75,
-                                      backgroundColor: Color(0xFFE0E0E0),
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFF0B6623),
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.green.shade700,
-                                        Colors.green.shade400,
-                                        Colors.green.shade200,
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.green.withOpacity(0.3),
-                                        blurRadius: 15,
-                                        offset: const Offset(0, 5),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.white,
-                                    ),
-                                    padding: const EdgeInsets.all(3),
-                                    child: CircleAvatar(
-                                      radius: 80,
-                                      backgroundColor: const Color(0xFFE0E0E0),
-                                      backgroundImage:
-                                          photoUrl.startsWith('assets/')
-                                          ? AssetImage(photoUrl)
-                                          : NetworkImage(photoUrl)
-                                                as ImageProvider,
-                                    ),
-                                  ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.3),
+                                  width: 2,
                                 ),
-                          const SizedBox(height: 12),
-                          TextButton(
-                            onPressed: _uploading
-                                ? null
-                                : () async {
-                                    // Daftar gambar profile (sertakan yang sedang dipakai)
-                                    final List<String> profileImages = [
-                                      'assets/images/air.png',
-                                      'assets/images/bupetani.png',
-                                      'assets/images/Cabai.png',
-                                      'assets/images/Matahari.png',
-                                      'assets/images/pakpetani.png',
-                                      'assets/images/Tanah.png',
-                                      'assets/images/Tunas.png',
-                                      'assets/images/Ulat.png',
-                                    ];
-                                    // Jika foto sekarang bukan salah satu pilihan dan bukan default, tambahkan di awal
-                                    // Jika foto sekarang bukan salah satu pilihan, tambahkan di awal
-                                    final currentPhoto = photoUrl;
-                                    if (currentPhoto.isNotEmpty &&
-                                        !profileImages.contains(currentPhoto) &&
-                                        currentPhoto != defaultProfile) {
-                                      profileImages.insert(0, currentPhoto);
-                                    }
-                                    final selected = await showDialog<String>(
-                                      context: context,
-                                      builder: (context) =>
-                                          ProfileImagePickerDialog(
-                                            profileImages: profileImages,
-                                            currentPhoto: currentPhoto,
-                                            defaultProfile: defaultProfile,
-                                          ),
-                                    );
-                                    if (selected != null &&
-                                        selected != currentPhoto) {
-                                      await FirebaseFirestore.instance
-                                          .collection('users')
-                                          .doc(user.uid)
-                                          .set({
-                                            'photoUrl': selected,
-                                          }, SetOptions(merge: true));
-                                      setState(() {
-                                        _photoUrl = selected;
-                                      });
-                                    }
-                                  },
-                            child: const Text(
-                              "Pilih Gambar Profile",
-                              style: TextStyle(
-                                color: Color(0xFF0B6623),
-                                fontWeight: FontWeight.bold,
+                              ),
+                              child: const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 32,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Card Nama
-                    _ProfileInfoCard(
-                      icon: Icons.person,
-                      title: "Nama",
-                      value: nama,
-                      onEdit: () => _editProfileField('nama', nama, user.uid),
-                      cardColor: Colors.white,
-                    ),
-
-                    // Card Email
-                    _ProfileInfoCard(
-                      icon: Icons.email,
-                      title: "Email",
-                      value: email,
-                      cardColor: Colors.white,
-                      showEdit: false,
-                    ),
-
-                    // Card Waktu Tanam
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.green.shade700,
-                                        Colors.green.shade500,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.calendar_today,
-                                    color: Colors.white,
-                                    size: 28,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Waktu Tanam',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey.shade600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        waktuTanam != null
-                                            ? DateFormat('dd MMM yyyy').format(
-                                                DateTime.fromMillisecondsSinceEpoch(
-                                                  waktuTanam,
-                                                ),
-                                              )
-                                            : 'Belum diatur',
-                                        style: const TextStyle(
-                                          color: Colors.black87,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0B6623).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.edit,
-                                      color: Color(0xFF0B6623),
-                                      size: 20,
-                                    ),
-                                    onPressed: () =>
-                                        _editWaktuTanam(user.uid, waktuTanam),
-                                    padding: const EdgeInsets.all(8),
-                                    constraints: const BoxConstraints(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (umurHari != null) ...[
-                              const Divider(height: 20),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                            const SizedBox(width: 16),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Umur Tanaman',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '$umurHari hari',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF0B6623),
-                                        ),
-                                      ),
-                                    ],
+                                  Text(
+                                    'Profile',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      const Text(
-                                        'Fase Pertumbuhan',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: fase == 'Siap Panen'
-                                              ? Colors.orange
-                                              : Colors.green,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          fase,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Kelola akun dan gambar profile',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w400,
+                                    ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-                              Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.orange.shade600,
-                                      Colors.orange.shade400,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.orange.withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton.icon(
-                                  onPressed: () => _resetWaktuTanam(user.uid),
-                                  icon: const Icon(Icons.refresh, size: 18),
-                                  label: const Text(
-                                    'Reset Siklus Tanam (Panen)',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            ],
+                              child: const Icon(
+                                Icons.account_circle,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 20),
 
-                    // Ubah Password
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0B6623).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.lock_outline,
-                            color: Color(0xFF0B6623),
-                            size: 24,
-                          ),
-                        ),
-                        title: const Text(
-                          "Ubah kata sandi",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        trailing: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0B6623).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_forward_ios,
-                            color: Color(0xFF0B6623),
-                            size: 16,
-                          ),
-                        ),
-                        onTap: _showChangePasswordDialog,
-                      ),
-                    ),
-
-                    // Logout
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.red.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.logout,
-                            color: Colors.red,
-                            size: 24,
-                          ),
-                        ),
-                        title: const Text(
-                          "Keluar akun",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        trailing: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.red,
-                            size: 16,
-                          ),
-                        ),
-                        onTap: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => Dialog(
-                              backgroundColor: const Color(0xFF0B6623),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 24,
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.error_outline,
-                                      color: Colors.red,
-                                      size: 40,
+                      // Foto Profil
+                      Center(
+                        child: Column(
+                          children: [
+                            _uploading
+                                ? Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.green.shade700,
+                                          Colors.green.shade400,
+                                          Colors.green.shade200,
+                                        ],
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.green.withOpacity(0.3),
+                                          blurRadius: 15,
+                                          offset: const Offset(0, 5),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 10),
-                                    const Text(
-                                      'Anda yakin ingin keluar dari akun?',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
                                         color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 16.5,
+                                      ),
+                                      padding: const EdgeInsets.all(3),
+                                      child: const CircleAvatar(
+                                        radius: 75,
+                                        backgroundColor: Color(0xFFE0E0E0),
+                                        child: CircularProgressIndicator(
+                                          color: Color(0xFF0B6623),
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 22),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
+                                  )
+                                : Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.green.shade700,
+                                          Colors.green.shade400,
+                                          Colors.green.shade200,
+                                        ],
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.green.withOpacity(0.3),
+                                          blurRadius: 15,
+                                          offset: const Offset(0, 5),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white,
+                                      ),
+                                      padding: const EdgeInsets.all(3),
+                                      child: CircleAvatar(
+                                        radius: 80,
+                                        backgroundColor: const Color(
+                                          0xFFE0E0E0,
+                                        ),
+                                        backgroundImage:
+                                            photoUrl.startsWith('assets/')
+                                            ? AssetImage(photoUrl)
+                                            : NetworkImage(photoUrl)
+                                                  as ImageProvider,
+                                      ),
+                                    ),
+                                  ),
+                            const SizedBox(height: 12),
+                            TextButton(
+                              onPressed: _uploading
+                                  ? null
+                                  : () async {
+                                      // Daftar gambar profile (sertakan yang sedang dipakai)
+                                      final List<String> profileImages = [
+                                        'assets/images/air.png',
+                                        'assets/images/bupetani.png',
+                                        'assets/images/Cabai.png',
+                                        'assets/images/Matahari.png',
+                                        'assets/images/pakpetani.png',
+                                        'assets/images/Tanah.png',
+                                        'assets/images/Tunas.png',
+                                        'assets/images/Ulat.png',
+                                      ];
+                                      // Jika foto sekarang bukan salah satu pilihan dan bukan default, tambahkan di awal
+                                      // Jika foto sekarang bukan salah satu pilihan, tambahkan di awal
+                                      final currentPhoto = photoUrl;
+                                      if (currentPhoto.isNotEmpty &&
+                                          !profileImages.contains(
+                                            currentPhoto,
+                                          ) &&
+                                          currentPhoto != defaultProfile) {
+                                        profileImages.insert(0, currentPhoto);
+                                      }
+                                      final selected = await showDialog<String>(
+                                        context: context,
+                                        builder: (context) =>
+                                            ProfileImagePickerDialog(
+                                              profileImages: profileImages,
+                                              currentPhoto: currentPhoto,
+                                              defaultProfile: defaultProfile,
                                             ),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 12,
-                                          ),
-                                          elevation: 0,
-                                        ),
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        child: const Text(
-                                          'Keluar',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFE5E5E5),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 12,
-                                          ),
-                                          elevation: 0,
-                                        ),
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text(
-                                          'Kembali',
-                                          style: TextStyle(
-                                            color: Color(0xFF0B6623),
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                      );
+                                      if (selected != null &&
+                                          selected != currentPhoto) {
+                                        await FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(user.uid)
+                                            .set({
+                                              'photoUrl': selected,
+                                            }, SetOptions(merge: true));
+                                        setState(() {
+                                          _photoUrl = selected;
+                                        });
+                                      }
+                                    },
+                              child: const Text(
+                                "Pilih Gambar Profile",
+                                style: TextStyle(
+                                  color: Color(0xFF0B6623),
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                          );
-
-                          if (confirm == true) {
-                            await FirebaseAuth.instance.signOut();
-                            if (context.mounted) {
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(
-                                  builder: (context) => const LoginScreen(),
-                                ),
-                                (route) => false,
-                              );
-                            }
-                          }
-                        },
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
-                  ],
+                      const SizedBox(height: 16),
+
+                      // Card Nama
+                      _ProfileInfoCard(
+                        icon: Icons.person,
+                        title: "Nama",
+                        value: nama,
+                        onEdit: () => _editProfileField('nama', nama, user.uid),
+                        cardColor: Colors.white,
+                      ),
+
+                      // Card Email
+                      _ProfileInfoCard(
+                        icon: Icons.email,
+                        title: "Email",
+                        value: email,
+                        cardColor: Colors.white,
+                        showEdit: false,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Ubah Password
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0B6623).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.lock_outline,
+                              color: Color(0xFF0B6623),
+                              size: 24,
+                            ),
+                          ),
+                          title: const Text(
+                            "Ubah kata sandi",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0B6623).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Color(0xFF0B6623),
+                              size: 16,
+                            ),
+                          ),
+                          onTap: _showChangePasswordDialog,
+                        ),
+                      ),
+
+                      // Logout
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.logout,
+                              color: Colors.red,
+                              size: 24,
+                            ),
+                          ),
+                          title: const Text(
+                            "Keluar akun",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.red,
+                              size: 16,
+                            ),
+                          ),
+                          onTap: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => Dialog(
+                                backgroundColor: const Color(0xFF0B6623),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 24,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.red,
+                                        size: 40,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        'Anda yakin ingin keluar dari akun?',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 22),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text(
+                                            'Keluar',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFFE5E5E5,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text(
+                                            'Kembali',
+                                            style: TextStyle(
+                                              color: Color(0xFF0B6623),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              await FirebaseAuth.instance.signOut();
+                              if (context.mounted) {
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginScreen(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-              ),
               );
             },
           );
@@ -1217,14 +982,14 @@ class _ProfileInfoCard extends StatelessWidget {
   final bool showEdit;
 
   const _ProfileInfoCard({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     required this.value,
     this.onEdit,
     this.cardColor,
     this.showEdit = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1287,7 +1052,11 @@ class _ProfileInfoCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.edit, color: Color(0xFF0B6623), size: 20),
+                  icon: const Icon(
+                    Icons.edit,
+                    color: Color(0xFF0B6623),
+                    size: 20,
+                  ),
                   onPressed: onEdit,
                   padding: const EdgeInsets.all(8),
                   constraints: const BoxConstraints(),

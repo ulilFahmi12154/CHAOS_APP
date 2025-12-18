@@ -491,7 +491,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final varietasId = activeVarietasSnapshot.value.toString();
           _selectedVarietas = _getVarietasDisplayName(varietasId);
           print(
-            '✅ Initial load: varietas = \"$_selectedVarietas\" (ID: $varietasId)',
+            '✅ Initial load: varietas = "${_selectedVarietas}" (ID: $varietasId)',
           );
         } else {
           // Tidak ada varietas aktif - set ke empty string
@@ -1071,34 +1071,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.green.shade700, Colors.green.shade500],
+                  colors: [
+                    const Color(0xFF1B5E20),
+                    const Color(0xFF2E7D32),
+                    const Color(0xFF4CAF50),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    color: const Color(0xFF2E7D32).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    'Pengaturan Sistem',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.settings,
                       color: Colors.white,
+                      size: 32,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Atur varietas, notifikasi, dan batas sensor',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pengaturan',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Atur varietas, notifikasi, dan batas sensor',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.tune,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                 ],
               ),
@@ -1305,7 +1349,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 });
 
                             // 3. Update active_varietas global untuk ESP32
-
 
                             // 3b. 🆕 MULTI-LOKASI: Update active_varietas PER LOKASI
                             // Ambil active_location dari Firestore user profile
