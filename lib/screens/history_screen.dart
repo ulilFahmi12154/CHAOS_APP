@@ -337,11 +337,14 @@ class _HistoryScreenState extends State<HistoryScreen>
         }
       }
 
+      print('📍 HISTORY: Loading history for location: $activeLocationId');
+
       // Tentukan varietas pilihan user dari lokasi aktif
       final varietasKey = await _getActiveVarietas();
       _activeVarietas = varietasKey;
+      print('🌱 HISTORY: Active varietas: $_activeVarietas');
 
-      // Baca dari root smartfarm/history (semua data), tapi filter di UI
+      // Baca dari smartfarm/locations/{locationId}/history
       final ref = await _resolveHistoryRef(null);
       await _loadHistoryDataFromRef(ref);
       _subscribeHistory(ref);
@@ -410,8 +413,12 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Future<DatabaseReference> _resolveHistoryRef(String? varietasKey) async {
-    // Selalu gunakan root history agar menggabungkan semua varietas
-    return _dbRef.child('smartfarm').child('history');
+    // Baca history dari lokasi aktif: smartfarm/locations/{locationId}/history
+    return _dbRef
+        .child('smartfarm')
+        .child('locations')
+        .child(activeLocationId)
+        .child('history');
   }
 
   Future<void> _loadHistoryDataFromRef(DatabaseReference ref) async {
@@ -443,6 +450,16 @@ class _HistoryScreenState extends State<HistoryScreen>
     Map<dynamic, dynamic> data = rawValue;
     List<Map<String, dynamic>> tempData = [];
 
+    print('📊 HISTORY DATA STRUCTURE:');
+    print('Top level keys: ${data.keys.toList()}');
+    if (data.isNotEmpty) {
+      final firstKey = data.keys.first;
+      print('First key: $firstKey');
+      if (data[firstKey] is Map) {
+        print('Second level keys: ${(data[firstKey] as Map).keys.toList()}');
+      }
+    }
+
     int toMillis(dynamic ts) {
       if (ts == null) return 0;
       if (ts is int) {
@@ -472,39 +489,55 @@ class _HistoryScreenState extends State<HistoryScreen>
       return 0.0;
     }
 
-    // Flatten: smartfarm/history/<varietas>/<yyyy-MM-dd>/<pushId>
-    data.forEach((varietasKey, varietasData) {
-      if (varietasData is Map) {
-        varietasData.forEach((dateKey, dateValue) {
+    // Flatten: smartfarm/locations/{locationId}/history/<crv_name>/<yyyy-MM-dd>/<recordId>
+    // Struktur: history/{crv_xxx}/{2025-12-18}/{recordId}/{ec, intensitas_cahaya, kelembaban_tanah, ...}
+    int recordCount = 0;
+    data.forEach((crvKey, crvData) {
+      if (crvData is Map) {
+        crvData.forEach((dateKey, dateValue) {
           if (dateValue is Map) {
-            dateValue.forEach((timeKey, timeValue) {
-              if (timeValue is Map) {
+            dateValue.forEach((recordKey, recordValue) {
+              if (recordValue is Map) {
+                recordCount++;
                 DateTime? dateFromKey;
                 try {
                   dateFromKey = DateFormat('yyyy-MM-dd').parse(dateKey);
                 } catch (e) {
-                  print('Error parsing date $dateKey: $e');
+                  print('⚠️ Error parsing date $dateKey: $e');
                 }
 
-                final parsedTs = toMillis(timeValue['timestamp']);
+                final parsedTs = toMillis(recordValue['timestamp']);
                 final effectiveTs =
                     parsedTs < DateTime(2005).millisecondsSinceEpoch &&
                         dateFromKey != null
                     ? dateFromKey.millisecondsSinceEpoch
                     : parsedTs;
 
+                // Extract potassium as number (ignore if it's "ON" or invalid)
+                dynamic potassiumValue = recordValue['potassium'];
+                double potassiumDouble = 0.0;
+                if (potassiumValue != null && potassiumValue != 'ON') {
+                  potassiumDouble = toDouble(potassiumValue);
+                }
+
                 tempData.add({
-                  'varietas': varietasKey.toString(),
+                  'varietas': crvKey.toString(),
                   'date': dateKey,
-                  'timeKey': timeKey,
-                  'kelembaban_tanah': toDouble(timeValue['kelembaban_tanah']),
-                  'suhu': toDouble(timeValue['suhu']),
-                  'intensitas_cahaya': toDouble(timeValue['intensitas_cahaya']),
-                  'kelembapan_udara': toDouble(
-                    timeValue['kelembapan_udara'] ??
-                        timeValue['kelembaban_udara'],
+                  'timeKey': recordKey,
+                  'kelembaban_tanah': toDouble(recordValue['kelembaban_tanah']),
+                  'suhu': toDouble(recordValue['suhu']),
+                  'intensitas_cahaya': toDouble(
+                    recordValue['intensitas_cahaya'],
                   ),
-                  'ph_tanah': toDouble(timeValue['ph_tanah']),
+                  'kelembapan_udara': toDouble(
+                    recordValue['kelembapan_udara'] ??
+                        recordValue['kelembaban_udara'],
+                  ),
+                  'ph_tanah': toDouble(recordValue['ph_tanah']),
+                  'ec': toDouble(recordValue['ec']),
+                  'nitrogen': toDouble(recordValue['nitrogen']),
+                  'phosphorus': toDouble(recordValue['phosphorus']),
+                  'potassium': potassiumDouble,
                   'timestamp': effectiveTs,
                   'effectiveDate': dateFromKey?.millisecondsSinceEpoch,
                 });
@@ -514,6 +547,9 @@ class _HistoryScreenState extends State<HistoryScreen>
         });
       }
     });
+    print(
+      '✅ Parsed $recordCount history records from location: $activeLocationId',
+    );
 
     tempData.sort(
       (a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int),
@@ -610,6 +646,18 @@ class _HistoryScreenState extends State<HistoryScreen>
         break;
       case 4:
         dataKey = 'ph_tanah';
+        break;
+      case 5:
+        dataKey = 'ec';
+        break;
+      case 6:
+        dataKey = 'nitrogen';
+        break;
+      case 7:
+        dataKey = 'phosphorus';
+        break;
+      case 8:
+        dataKey = 'potassium';
         break;
       default:
         dataKey = 'kelembaban_tanah';
