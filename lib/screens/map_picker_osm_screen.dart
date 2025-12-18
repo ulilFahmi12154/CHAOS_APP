@@ -8,7 +8,7 @@ import 'dart:async';
 
 class MapPickerOsmScreen extends StatefulWidget {
   final LatLng? initialPosition;
-  const MapPickerOsmScreen({Key? key, this.initialPosition}) : super(key: key);
+  const MapPickerOsmScreen({super.key, this.initialPosition});
 
   @override
   State<MapPickerOsmScreen> createState() => _MapPickerOsmScreenState();

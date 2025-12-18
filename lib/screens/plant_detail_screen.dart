@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import '../widgets/notification_badge.dart';
-import 'main_navigation_screen.dart';
 
 class KenaliTanamanmuScreen extends StatefulWidget {
-  const KenaliTanamanmuScreen({Key? key}) : super(key: key);
+  const KenaliTanamanmuScreen({super.key});
 
   @override
   State<KenaliTanamanmuScreen> createState() => _KenaliTanamanmuScreenState();
@@ -80,70 +78,107 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFE8F5E9),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1B5E20),
-        elevation: 0,
-        centerTitle: false,
-        automaticallyImplyLeading: false,
-        toolbarHeight: 80,
-        leadingWidth: 120,
-        leading: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Image.asset(
-            'assets/images/logo.png',
-            height: 90,
-            fit: BoxFit.contain,
-            errorBuilder: (c, e, s) =>
-                const Icon(Icons.eco, color: Colors.white),
-          ),
-        ),
-        title: const SizedBox.shrink(),
-        actions: [
-          NotificationBadgeStream(
-            child: const Icon(
-              Icons.notifications_outlined,
-              color: Colors.white,
-            ),
-            onTap: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => const MainNavigationScreen(initialIndex: 5),
-                  settings: const RouteSettings(
-                    arguments: {'initialIndex': 5, 'lastIndex': 2},
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: _plants.length + 1, // +1 untuk header
+            itemBuilder: (context, index) {
+              // First item is the header
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF1B5E20),
+                          const Color(0xFF2E7D32),
+                          const Color(0xFF4CAF50),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF2E7D32).withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.local_florist,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Kenali Tanamanmu',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Varietas cabai & karakteristiknya',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.eco,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 24),
-            child: const Center(
-              child: Text(
-                'Kenali Tanamanmu',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0B6623),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(20),
-              itemCount: _plants.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 18),
-              itemBuilder: (context, index) {
-                final plant = _plants[index];
-                final isExpanded = _expanded[index];
-                return Card(
+                );
+              }
+
+              // Rest of items are plant cards with spacing
+              final plantIndex = index - 1;
+              final plant = _plants[plantIndex];
+              final isExpanded = _expanded[plantIndex];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: Card(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: const BorderSide(
@@ -200,8 +235,7 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                                     final showEllipsis = short.length > 90;
                                     return Text(
                                       showEllipsis
-                                          ? short.substring(0, 90).trimRight() +
-                                                '...'
+                                          ? '${short.substring(0, 90).trimRight()}...'
                                           : short,
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
@@ -220,7 +254,8 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                                   OutlinedButton(
                                     onPressed: () {
                                       setState(() {
-                                        _expanded[index] = !_expanded[index];
+                                        _expanded[plantIndex] =
+                                            !_expanded[plantIndex];
                                       });
                                     },
                                     style: OutlinedButton.styleFrom(
@@ -254,104 +289,12 @@ class _KenaliTanamanmuScreenState extends State<KenaliTanamanmuScreen> {
                       ],
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B5E20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  icon: Icons.toggle_on_outlined,
-                  label: 'Kontrol',
-                  route: '/main',
-                  index: 0,
                 ),
-                _buildNavItem(
-                  icon: Icons.history,
-                  label: 'Histori',
-                  route: '/main',
-                  index: 1,
-                ),
-                _buildNavItem(
-                  icon: Icons.dashboard_outlined,
-                  label: 'Dashboard',
-                  route: '/main',
-                  index: 2,
-                ),
-                _buildNavItem(
-                  icon: Icons.settings_outlined,
-                  label: 'Pengaturan',
-                  route: '/main',
-                  index: 3,
-                ),
-                _buildNavItem(
-                  icon: Icons.person_outline,
-                  label: 'Profile',
-                  route: '/main',
-                  index: 4,
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required String route,
-    required int index,
-  }) {
-    return InkWell(
-      onTap: () {
-        Navigator.pushReplacementNamed(
-          context,
-          route,
-          arguments: {'initialIndex': index},
-        );
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white70, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

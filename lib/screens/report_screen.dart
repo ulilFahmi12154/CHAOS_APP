@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as ex;
@@ -527,33 +528,145 @@ class _ReportScreenState extends State<ReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Laporan',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Analisis data dan performa pertanian',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
+            // Header Laporan - Style konsisten dengan History
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF1B5E20),
+                    const Color(0xFF2E7D32),
+                    const Color(0xFF4CAF50),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                _buildExportButton(),
-              ],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2E7D32).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.assessment,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Laporan',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Analisis data dan performa pertanian',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.bar_chart,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Section Download Laporan
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade50, Colors.blue.shade100],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade600,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_download_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Download Laporan',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Anda bisa mendownload laporan dalam format PDF atau Excel',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _buildExportButton(),
+                ],
+              ),
             ),
 
             // Tampilkan peringatan jika belum ada varietas
@@ -1804,6 +1917,21 @@ class _ReportScreenState extends State<ReportScreen> {
   // EXPORT TO PDF (CUSTOM SMARTFARM)
   // =========================
   Future<void> _exportToPDF() async {
+    // Validasi: pastikan ada data dan varietas
+    if (_reportData.isEmpty || _activeVarietas == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Tidak ada data untuk diekspor. Pilih varietas terlebih dahulu.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final pdf = pw.Document();
 
@@ -2212,9 +2340,35 @@ class _ReportScreenState extends State<ReportScreen> {
   // EXPORT TO EXCEL (tetap)
   // =========================
   Future<void> _exportToExcel() async {
+    // Validasi: pastikan ada data dan varietas
+    if (_reportData.isEmpty || _activeVarietas == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Tidak ada data untuk diekspor. Pilih varietas terlebih dahulu.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
+      // Buat Excel tanpa sheet default
       var excel = ex.Excel.createExcel();
+
+      // Buat sheet 'Laporan'
       ex.Sheet sheetObject = excel['Laporan'];
+
+      // Hapus semua sheet lain kecuali 'Laporan'
+      final sheetsToDelete = excel.tables.keys
+          .where((name) => name != 'Laporan')
+          .toList();
+      for (var sheetName in sheetsToDelete) {
+        excel.delete(sheetName);
+      }
 
       sheetObject.appendRow([ex.TextCellValue('LAPORAN PERTANIAN CHAOS')]);
       sheetObject.appendRow([
@@ -2342,22 +2496,37 @@ class _ReportScreenState extends State<ReportScreen> {
         ex.TextCellValue('95%'),
       ]);
 
-      final directory = await getApplicationDocumentsDirectory();
+      // Encode Excel to bytes
+      final excelBytes = excel.encode();
+      if (excelBytes == null) {
+        throw Exception('Failed to encode Excel file');
+      }
+
+      // Convert List<int> to Uint8List
+      final bytes = Uint8List.fromList(excelBytes);
+
+      // Save to Downloads directory (sama seperti PDF behavior)
+      Directory directory = Directory('/storage/emulated/0/Download');
+      if (!await directory.exists()) {
+        // Fallback to Documents if Downloads not accessible
+        directory = await getApplicationDocumentsDirectory();
+      }
+
       final fileName =
-          'Laporan_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.xlsx';
+          'Laporan SmartFarm - ${DateFormat('dd MMMM yyyy').format(DateTime.now())}.xlsx';
       final filePath = '${directory.path}/$fileName';
 
-      File(filePath)
-        ..createSync(recursive: true)
-        ..writeAsBytesSync(excel.encode()!);
+      final file = File(filePath);
+      await file.writeAsBytes(bytes);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Excel tersimpan: $fileName'),
+            content: Text('Excel tersimpan di:\nDownload/$fileName'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
             action: SnackBarAction(
-              label: 'Buka',
+              label: 'OK',
               textColor: Colors.white,
               onPressed: () {},
             ),
