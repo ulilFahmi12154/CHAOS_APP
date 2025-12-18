@@ -185,10 +185,22 @@ class _KontrolScreenState extends State<KontrolScreen> {
   }
 
   Future<void> _toggleMode(bool value) async {
+    // MULTI-LOKASI: Update mode per lokasi (WOKWI BACA PATH INI!)
+    await db
+        .child('smartfarm/locations/$activeLocationId/mode_otomatis')
+        .set(value);
+
+    // Backup: Update juga path global untuk kompatibilitas
     await db.child('smartfarm/mode_otomatis').set(value);
+
     setState(() {
       modeOtomatis = value;
     });
+
+    print(
+      '✅ Mode updated: ${value ? "Otomatis" : "Manual"} for location: $activeLocationId',
+    );
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Mode berubah ke ${value ? "Otomatis" : "Manual"}'),
@@ -227,17 +239,22 @@ class _KontrolScreenState extends State<KontrolScreen> {
       final commandValue = state ? 1 : 0;
       final statusValue = state ? 'ON' : 'OFF';
 
-      // Path 1: smartfarm/commands/relay_varietas (command)
-      final commandPath1 = 'smartfarm/commands/relay_$activeVarietas';
-      print('DEBUG: Updating path 1: $commandPath1 with value: $commandValue');
+      // Path 1: MULTI-LOKASI command (WOKWI BACA PATH INI!)
+      final commandPath1 =
+          'smartfarm/locations/$activeLocationId/commands/relay_$activeVarietas';
+      print(
+        'DEBUG: Updating LOCATION command: $commandPath1 with value: $commandValue',
+      );
       await db.child(commandPath1).set(commandValue);
 
-      // Path 2: smartfarm/devices/pump/command (untuk Wokwi)
-      final commandPath2 = 'smartfarm/devices/pump/command';
-      print('DEBUG: Updating path 2: $commandPath2 with value: $commandValue');
+      // Path 2: Global command (backup untuk kompatibilitas)
+      final commandPath2 = 'smartfarm/commands/relay_$activeVarietas';
+      print(
+        'DEBUG: Updating GLOBAL command: $commandPath2 with value: $commandValue',
+      );
       await db.child(commandPath2).set(commandValue);
 
-      // Path 3: UPDATE SENSOR STATUS LANGSUNG (tidak tunggu Wokwi)
+      // Path 3: UPDATE SENSOR STATUS LANGSUNG (untuk UI realtime)
       // MULTI-LOKASI: Update sensor di lokasi aktif
       final sensorPath =
           'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa';
@@ -711,7 +728,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
               ),
               StreamBuilder<dynamic>(
                 stream: db
-                    .child('smartfarm/mode_otomatis')
+                    .child(
+                      'smartfarm/locations/$activeLocationId/mode_otomatis',
+                    )
                     .onValue
                     .map((e) => e.snapshot.value),
                 builder: (context, snapshot) {
@@ -870,7 +889,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/mode_otomatis')
+                .child('smartfarm/locations/$activeLocationId/mode_otomatis')
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, modeSnapshot) {
@@ -1047,7 +1066,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
                       children: [
                         StreamBuilder<dynamic>(
                           stream: db
-                              .child('smartfarm/sensors/$activeVarietas/pompa')
+                              .child(
+                                'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                              )
                               .onValue
                               .map((e) => e.snapshot.value),
                           builder: (context, snapshot) {
@@ -1174,7 +1195,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   if (!isAuto)
                     StreamBuilder<dynamic>(
                       stream: db
-                          .child('smartfarm/sensors/$activeVarietas/pompa')
+                          .child(
+                            'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                          )
                           .onValue
                           .map((e) => e.snapshot.value),
                       builder: (context, pompaSnapshot) {
@@ -1213,11 +1236,13 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                       ],
                                     ),
                                     child: ElevatedButton(
-                                      onPressed: (_isTogglingPompa || isOn)
+                                      onPressed: _isTogglingPompa
                                           ? null
-                                          : () {
-                                              _togglePompa(true);
-                                            },
+                                          : (isOn
+                                                ? null
+                                                : () {
+                                                    _togglePompa(true);
+                                                  }),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1287,11 +1312,13 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                       ],
                                     ),
                                     child: ElevatedButton(
-                                      onPressed: (_isTogglingPompa || !isOn)
+                                      onPressed: _isTogglingPompa
                                           ? null
-                                          : () {
-                                              _togglePompa(false);
-                                            },
+                                          : (!isOn
+                                                ? null
+                                                : () {
+                                                    _togglePompa(false);
+                                                  }),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1524,7 +1551,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/mode_otomatis')
+                .child('smartfarm/locations/$activeLocationId/mode_otomatis')
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {
@@ -1539,7 +1566,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 12),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/sensors/$activeVarietas/pompa')
+                .child(
+                  'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                )
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {

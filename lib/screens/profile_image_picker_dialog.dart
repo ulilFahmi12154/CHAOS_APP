@@ -11,7 +11,8 @@ class ProfileImagePickerDialog extends StatefulWidget {
   });
 
   @override
-  State<ProfileImagePickerDialog> createState() => _ProfileImagePickerDialogState();
+  State<ProfileImagePickerDialog> createState() =>
+      _ProfileImagePickerDialogState();
 }
 
 class _ProfileImagePickerDialogState extends State<ProfileImagePickerDialog> {
@@ -73,7 +74,9 @@ class _ProfileImagePickerDialogState extends State<ProfileImagePickerDialog> {
                               Container(
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: isSelected ? const Color(0xFF0B6623) : Colors.transparent,
+                                    color: isSelected
+                                        ? const Color(0xFF0B6623)
+                                        : Colors.transparent,
                                     width: 3,
                                   ),
                                   shape: BoxShape.circle,
@@ -87,8 +90,12 @@ class _ProfileImagePickerDialogState extends State<ProfileImagePickerDialog> {
                               Text(
                                 label,
                                 style: TextStyle(
-                                  color: isSelected ? const Color(0xFF0B6623) : Colors.black87,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected
+                                      ? const Color(0xFF0B6623)
+                                      : Colors.black87,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                   fontSize: 13.5,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -118,7 +125,9 @@ class _ProfileImagePickerDialogState extends State<ProfileImagePickerDialog> {
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0B6623),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                     ),

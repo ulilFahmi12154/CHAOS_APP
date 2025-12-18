@@ -104,13 +104,13 @@ class _ReportScreenState extends State<ReportScreen> {
       '🔔 REPORT: Setting up varietas listener for location: $activeLocationId',
     );
 
-    // MULTI-LOKASI: Listen ke path per-lokasi
-    final ref = FirebaseDatabase.instance.ref(
+    // MULTI-LOKASI: Listen ke path active_varietas per-lokasi
+    final varietasRef = FirebaseDatabase.instance.ref(
       'smartfarm/locations/$activeLocationId/active_varietas',
     );
 
     // Listen to real-time changes
-    _varietasSubscription = ref.onValue.listen(
+    _varietasSubscription = varietasRef.onValue.listen(
       (event) {
         print('📡 REPORT: Varietas listener triggered');
         print('  → Snapshot exists: ${event.snapshot.exists}');
@@ -187,18 +187,23 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final varietas = _activeVarietas!;
       print('📊 Loading report data for: $varietas');
+      print('📍 Active location: $activeLocationId');
 
-      // Ambil data sensor history dari Firebase
+      // Ambil data sensor history dari Firebase (per-location)
       final sensorHistoryRef = FirebaseDatabase.instance.ref(
-        'sensor_history/$varietas',
+        'smartfarm/locations/$activeLocationId/history/$varietas',
       );
       final sensorHistorySnapshot = await sensorHistoryRef.get();
+      print('📦 Sensor history exists: ${sensorHistorySnapshot.exists}');
 
-      // Ambil data irrigation history
+      // Ambil data irrigation history (per-location)
       final irrigationHistoryRef = FirebaseDatabase.instance.ref(
-        'irrigation_history/$varietas',
+        'smartfarm/locations/$activeLocationId/irrigation_history/$varietas',
       );
       final irrigationHistorySnapshot = await irrigationHistoryRef.get();
+      print(
+        '💧 Irrigation history exists: ${irrigationHistorySnapshot.exists}',
+      );
 
       int totalPenyiraman = 0;
       double totalDurasi = 0;
@@ -218,10 +223,62 @@ class _ReportScreenState extends State<ReportScreen> {
       // Process sensor history data
       if (sensorHistorySnapshot.exists) {
         final historyData = sensorHistorySnapshot.value as Map;
+        print('📊 Processing ${historyData.length} history entries');
 
         historyData.forEach((key, value) {
           try {
-            if (value is Map) {
+            // Check if this is a date-based structure
+            if (value is Map && !value.containsKey('timestamp')) {
+              // Nested structure: date -> pushKey -> data
+              value.forEach((pushKey, sensorData) {
+                if (sensorData is Map) {
+                  final timestamp = sensorData['timestamp'] as int?;
+                  if (timestamp != null) {
+                    final dateTime = DateTime.fromMillisecondsSinceEpoch(
+                      timestamp,
+                    );
+                    if (dateTime.isAfter(
+                          startDate.subtract(const Duration(days: 1)),
+                        ) &&
+                        dateTime.isBefore(
+                          endDate.add(const Duration(days: 1)),
+                        )) {
+                      // Process nested sensor data
+                      if (sensorData['suhu'] != null) {
+                        final temp = (sensorData['suhu'] as num).toDouble();
+                        suhuList.add(temp);
+                        final dayKey = DateFormat('EEE').format(dateTime);
+                        weeklySuhu[dayKey] = (weeklySuhu[dayKey] ?? 0) + temp;
+                      }
+                      if (sensorData['kelembapan_udara'] != null) {
+                        final hum = (sensorData['kelembapan_udara'] as num)
+                            .toDouble();
+                        humidityList.add(hum);
+                        final dayKey = DateFormat('EEE').format(dateTime);
+                        weeklyHumidity[dayKey] =
+                            (weeklyHumidity[dayKey] ?? 0) + hum;
+                      }
+                      if (sensorData['kelembapan_tanah'] != null) {
+                        final soil = (sensorData['kelembapan_tanah'] as num)
+                            .toDouble();
+                        soilList.add(soil);
+                        final dayKey = DateFormat('EEE').format(dateTime);
+                        weeklySoil[dayKey] = (weeklySoil[dayKey] ?? 0) + soil;
+                      }
+                      if (sensorData['intensitas_cahaya'] != null) {
+                        lightList.add(
+                          (sensorData['intensitas_cahaya'] as num).toDouble(),
+                        );
+                      }
+                      if (sensorData['ph_tanah'] != null) {
+                        phList.add((sensorData['ph_tanah'] as num).toDouble());
+                      }
+                    }
+                  }
+                }
+              });
+            } else if (value is Map) {
+              // Direct structure: pushKey -> data
               final timestamp = value['timestamp'] as int?;
               if (timestamp != null) {
                 final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -231,32 +288,34 @@ class _ReportScreenState extends State<ReportScreen> {
                       startDate.subtract(const Duration(days: 1)),
                     ) &&
                     dateTime.isBefore(endDate.add(const Duration(days: 1)))) {
-                  // Ambil data sensor
-                  if (value['temperature'] != null) {
-                    final temp = (value['temperature'] as num).toDouble();
+                  // Ambil data sensor (field names sesuai Firebase)
+                  if (value['suhu'] != null) {
+                    final temp = (value['suhu'] as num).toDouble();
                     suhuList.add(temp);
 
                     // Aggregate weekly data
                     final dayKey = DateFormat('EEE').format(dateTime);
                     weeklySuhu[dayKey] = (weeklySuhu[dayKey] ?? 0) + temp;
                   }
-                  if (value['humidity'] != null) {
-                    final hum = (value['humidity'] as num).toDouble();
+                  if (value['kelembapan_udara'] != null) {
+                    final hum = (value['kelembapan_udara'] as num).toDouble();
                     humidityList.add(hum);
 
                     final dayKey = DateFormat('EEE').format(dateTime);
                     weeklyHumidity[dayKey] =
                         (weeklyHumidity[dayKey] ?? 0) + hum;
                   }
-                  if (value['soil_moisture'] != null) {
-                    final soil = (value['soil_moisture'] as num).toDouble();
+                  if (value['kelembapan_tanah'] != null) {
+                    final soil = (value['kelembapan_tanah'] as num).toDouble();
                     soilList.add(soil);
 
                     final dayKey = DateFormat('EEE').format(dateTime);
                     weeklySoil[dayKey] = (weeklySoil[dayKey] ?? 0) + soil;
                   }
-                  if (value['light_intensity'] != null) {
-                    lightList.add((value['light_intensity'] as num).toDouble());
+                  if (value['intensitas_cahaya'] != null) {
+                    lightList.add(
+                      (value['intensitas_cahaya'] as num).toDouble(),
+                    );
                   }
                   if (value['ph_tanah'] != null) {
                     phList.add((value['ph_tanah'] as num).toDouble());
@@ -279,7 +338,12 @@ class _ReportScreenState extends State<ReportScreen> {
             if (value is Map) {
               final timestamp = value['timestamp'] as int?;
               if (timestamp != null) {
-                final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+                // PENTING: timestamp dari ESP32 dalam DETIK, bukan milliseconds!
+                // Convert ke milliseconds untuk DateTime parsing
+                final timestampMs = timestamp * 1000;
+                final dateTime = DateTime.fromMillisecondsSinceEpoch(
+                  timestampMs,
+                );
 
                 // Filter berdasarkan range tanggal
                 if (dateTime.isAfter(
@@ -288,17 +352,21 @@ class _ReportScreenState extends State<ReportScreen> {
                     dateTime.isBefore(endDate.add(const Duration(days: 1)))) {
                   totalPenyiraman++;
 
-                  // Hitung durasi (dalam menit, konversi ke jam)
+                  // Hitung durasi (duration dari Firebase dalam DETIK)
                   if (value['duration'] != null) {
-                    final duration = (value['duration'] as num).toDouble();
-                    totalDurasi += duration / 60;
+                    final durationSeconds = (value['duration'] as num)
+                        .toDouble();
+                    final durationMinutes =
+                        durationSeconds / 60; // detik → menit
+                    final durationHours = durationMinutes / 60; // menit → jam
+                    totalDurasi += durationHours;
 
-                    // Estimasi penggunaan air (asumsi 2 liter/menit)
-                    totalAirUsed += duration * 2;
+                    // Estimasi penggunaan air (asumsi 5 liter/menit)
+                    totalAirUsed += durationMinutes * 5;
                   }
 
                   // Hitung penyiraman per hari
-                  final dayKey = DateFormat('EEE').format(dateTime);
+                  final dayKey = DateFormat('yyyy-MM-dd').format(dateTime);
                   dailyIrrigation[dayKey] = (dailyIrrigation[dayKey] ?? 0) + 1;
 
                   // Kategorikan tipe penyiraman
