@@ -60,9 +60,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Lokasi aktif (multi-lokasi)
   String? activeLocationId;
+  String activeLocationName = '';
+  List<Map<String, String>> userLocations = [];
 
   // Key untuk force rebuild varietas field
   Key _varietasWidgetKey = UniqueKey();
+  // Key untuk location field
+  final GlobalKey _locationFieldKey = GlobalKey();
 
   // Asset icon paths to verify and precache
   final List<String> _iconAssets = [
@@ -111,6 +115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserLocations(); // Load lokasi dulu
     _initializeData();
 
     // Try to precache icon assets after first frame to surface any missing asset errors early
@@ -133,6 +138,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _loadVarietasList();
     await _loadUserSettings();
     await _loadPlantingDate();
+  }
+
+  /// Load lokasi yang dimiliki user dari Firestore
+  Future<void> _loadUserLocations() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (userDoc.exists && mounted) {
+        final data = userDoc.data()!;
+        final locationIds = List<String>.from(
+          data['locations'] ?? ['lokasi_1'],
+        );
+        final activeLocId = data['active_location'] ?? 'lokasi_1';
+
+        // Load detail setiap lokasi dari Realtime DB
+        List<Map<String, String>> locs = [];
+        Set<String> seenIds = {};
+
+        for (var locId in locationIds) {
+          if (seenIds.contains(locId)) continue;
+          seenIds.add(locId);
+
+          final locSnapshot = await FirebaseDatabase.instance
+              .ref('smartfarm/locations/$locId')
+              .get();
+
+          if (locSnapshot.exists) {
+            final locData = Map<String, dynamic>.from(locSnapshot.value as Map);
+            locs.add({
+              'id': locId,
+              'name': (locData['name'] ?? locId).toString(),
+              'address': (locData['address'] ?? '').toString(),
+            });
+          } else {
+            locs.add({
+              'id': locId,
+              'name': 'Lokasi ${locs.length + 1}',
+              'address': '',
+            });
+          }
+        }
+
+        if (locs.isEmpty) {
+          locs.add({'id': 'lokasi_1', 'name': 'Lokasi 1', 'address': ''});
+        }
+
+        final validActiveId = locs.any((l) => l['id'] == activeLocId)
+            ? activeLocId
+            : locs.first['id']!;
+
+        setState(() {
+          userLocations = locs;
+          activeLocationId = validActiveId;
+          activeLocationName =
+              locs.firstWhere(
+                (l) => l['id'] == validActiveId,
+                orElse: () => locs.first,
+              )['name'] ??
+              validActiveId;
+        });
+
+        print(
+          '✅ SETTINGS: Loaded ${locs.length} locations, active: $activeLocationName',
+        );
+      }
+    } catch (e) {
+      print('Error loading user locations in settings: $e');
+    }
+  }
+
+  /// Ganti lokasi aktif
+  Future<void> _switchLocation(String newLocationId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'active_location': newLocationId,
+      });
+
+      setState(() {
+        activeLocationId = newLocationId;
+        activeLocationName =
+            userLocations.firstWhere(
+              (l) => l['id'] == newLocationId,
+              orElse: () => {'name': newLocationId},
+            )['name'] ??
+            newLocationId;
+      });
+
+      // Reload varietas untuk lokasi baru
+      await _loadUserSettings();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 Beralih ke $activeLocationName'),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error switching location: $e');
+    }
   }
 
   /// Load list varietas dari Firestore
@@ -1209,6 +1322,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // 📍 DROPDOWN LOKASI AKTIF
+            if (userLocations.isNotEmpty)
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            color: Colors.blue.shade700,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Lokasi Aktif Saat Ini',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      InkWell(
+                        key: _locationFieldKey,
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          final selected = await _showLocationMenu(context);
+                          if (selected != null &&
+                              selected != activeLocationId) {
+                            await _switchLocation(selected);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blue.shade300,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  activeLocationName.isEmpty
+                                      ? 'Pilih Lokasi'
+                                      : activeLocationName,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                    color: activeLocationName.isEmpty
+                                        ? Colors.grey.shade500
+                                        : Colors.blue.shade900,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                color: Colors.blue.shade700,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
             // Varietas yang ditanam saat ini
             Card(
               key:
@@ -1864,6 +2059,121 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Future<String?> _showLocationMenu(BuildContext context) async {
+    if (userLocations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada lokasi tersedia'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return null;
+    }
+
+    final RenderBox button =
+        _locationFieldKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final Offset buttonTopLeft = button.localToGlobal(
+      Offset.zero,
+      ancestor: overlay,
+    );
+    final Offset buttonBottomLeft = button.localToGlobal(
+      Offset(0, button.size.height),
+      ancestor: overlay,
+    );
+
+    final RelativeRect position = RelativeRect.fromLTRB(
+      buttonTopLeft.dx,
+      buttonBottomLeft.dy + 4,
+      overlay.size.width - buttonTopLeft.dx - button.size.width,
+      overlay.size.height - buttonBottomLeft.dy - 4,
+    );
+
+    final result = await showMenu<String>(
+      context: context,
+      position: position,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.white,
+      constraints: BoxConstraints(
+        minWidth: button.size.width,
+        maxWidth: button.size.width,
+      ),
+      items: userLocations.map((loc) {
+        final isSelected = loc['id'] == activeLocationId;
+        return PopupMenuItem<String>(
+          value: loc['id'],
+          height: 60,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.blue.shade100
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    isSelected
+                        ? Icons.check_circle
+                        : Icons.location_on_outlined,
+                    size: 20,
+                    color: isSelected
+                        ? Colors.blue.shade700
+                        : Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        loc['name']!,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? Colors.blue.shade900
+                              : Colors.black87,
+                        ),
+                      ),
+                      if (loc['address'] != null &&
+                          loc['address']!.isNotEmpty &&
+                          loc['address'] != 'Unknown Location')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            loc['address']!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+
+    return result;
   }
 
   Future<String?> _showVarietasMenu(BuildContext context) async {

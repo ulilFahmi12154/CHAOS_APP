@@ -185,10 +185,22 @@ class _KontrolScreenState extends State<KontrolScreen> {
   }
 
   Future<void> _toggleMode(bool value) async {
+    // MULTI-LOKASI: Update mode per lokasi (WOKWI BACA PATH INI!)
+    await db
+        .child('smartfarm/locations/$activeLocationId/mode_otomatis')
+        .set(value);
+
+    // Backup: Update juga path global untuk kompatibilitas
     await db.child('smartfarm/mode_otomatis').set(value);
+
     setState(() {
       modeOtomatis = value;
     });
+
+    print(
+      '✅ Mode updated: ${value ? "Otomatis" : "Manual"} for location: $activeLocationId',
+    );
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Mode berubah ke ${value ? "Otomatis" : "Manual"}'),
@@ -227,17 +239,22 @@ class _KontrolScreenState extends State<KontrolScreen> {
       final commandValue = state ? 1 : 0;
       final statusValue = state ? 'ON' : 'OFF';
 
-      // Path 1: smartfarm/commands/relay_varietas (command)
-      final commandPath1 = 'smartfarm/commands/relay_$activeVarietas';
-      print('DEBUG: Updating path 1: $commandPath1 with value: $commandValue');
+      // Path 1: MULTI-LOKASI command (WOKWI BACA PATH INI!)
+      final commandPath1 =
+          'smartfarm/locations/$activeLocationId/commands/relay_$activeVarietas';
+      print(
+        'DEBUG: Updating LOCATION command: $commandPath1 with value: $commandValue',
+      );
       await db.child(commandPath1).set(commandValue);
 
-      // Path 2: smartfarm/devices/pump/command (untuk Wokwi)
-      final commandPath2 = 'smartfarm/devices/pump/command';
-      print('DEBUG: Updating path 2: $commandPath2 with value: $commandValue');
+      // Path 2: Global command (backup untuk kompatibilitas)
+      final commandPath2 = 'smartfarm/commands/relay_$activeVarietas';
+      print(
+        'DEBUG: Updating GLOBAL command: $commandPath2 with value: $commandValue',
+      );
       await db.child(commandPath2).set(commandValue);
 
-      // Path 3: UPDATE SENSOR STATUS LANGSUNG (tidak tunggu Wokwi)
+      // Path 3: UPDATE SENSOR STATUS LANGSUNG (untuk UI realtime)
       // MULTI-LOKASI: Update sensor di lokasi aktif
       final sensorPath =
           'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa';
@@ -593,77 +610,53 @@ class _KontrolScreenState extends State<KontrolScreen> {
   Widget _buildHeaderCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF1B5E20),
-            const Color(0xFF2E7D32),
-            const Color(0xFF4CAF50),
+            Colors.green.shade600,
+            Colors.green.shade400,
+            Colors.green.shade300,
           ],
+          stops: const [0.0, 0.75, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2E7D32).withOpacity(0.3),
+            color: Colors.green.shade400.withOpacity(0.6),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 2,
-              ),
-            ),
-            child: const Icon(
-              Icons.settings_input_component,
+          const Text(
+            'Kontrol Sistem Irigasi',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
               color: Colors.white,
-              size: 32,
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Kontrol',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Kelola pompa dan mode otomatis/manual',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 8),
+          Text(
+            'Kelola pompa dan mode otomatis/manual',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.95),
+              letterSpacing: 0.3,
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.water_drop, color: Colors.white, size: 24),
           ),
         ],
       ),
@@ -735,7 +728,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
               ),
               StreamBuilder<dynamic>(
                 stream: db
-                    .child('smartfarm/mode_otomatis')
+                    .child(
+                      'smartfarm/locations/$activeLocationId/mode_otomatis',
+                    )
                     .onValue
                     .map((e) => e.snapshot.value),
                 builder: (context, snapshot) {
@@ -743,7 +738,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   return Switch(
                     value: isAuto,
                     onChanged: _toggleMode,
-                    activeThumbColor: Colors.green,
+                    activeColor: Colors.green,
                   );
                 },
               ),
@@ -894,7 +889,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/mode_otomatis')
+                .child('smartfarm/locations/$activeLocationId/mode_otomatis')
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, modeSnapshot) {
@@ -936,7 +931,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
                               color: Colors.blue.withOpacity(0.4),
                               blurRadius: 20,
                               spreadRadius: 5,
-                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
@@ -1072,7 +1066,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
                       children: [
                         StreamBuilder<dynamic>(
                           stream: db
-                              .child('smartfarm/sensors/$activeVarietas/pompa')
+                              .child(
+                                'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                              )
                               .onValue
                               .map((e) => e.snapshot.value),
                           builder: (context, snapshot) {
@@ -1103,7 +1099,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                             : Colors.grey.withOpacity(0.3),
                                         blurRadius: isOn ? 30 : 15,
                                         spreadRadius: isOn ? 8 : 2,
-                                        offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
@@ -1161,7 +1156,6 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                               blurRadius: isOn ? 10 : 5,
                                               spreadRadius: isOn ? 2 : 0,
-                                              offset: const Offset(0, 2),
                                             ),
                                           ],
                                         ),
@@ -1201,7 +1195,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
                   if (!isAuto)
                     StreamBuilder<dynamic>(
                       stream: db
-                          .child('smartfarm/sensors/$activeVarietas/pompa')
+                          .child(
+                            'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                          )
                           .onValue
                           .map((e) => e.snapshot.value),
                       builder: (context, pompaSnapshot) {
@@ -1240,26 +1236,13 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                       ],
                                     ),
                                     child: ElevatedButton(
-                                      onPressed: (_isTogglingPompa || isOn)
+                                      onPressed: _isTogglingPompa
                                           ? null
-                                          : () {
-                                              _togglePompa(true);
-                                            },
-                                      style: ElevatedButton.styleFrom(
-                                        minimumSize: const Size.fromHeight(48),
-                                        backgroundColor: Colors.transparent,
-                                        foregroundColor: Colors.white,
-                                        shadowColor: Colors.transparent,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                        ),
-                                      ),
+                                          : (isOn
+                                                ? null
+                                                : () {
+                                                    _togglePompa(true);
+                                                  }),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1283,6 +1266,21 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                             ),
                                           ],
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1314,26 +1312,13 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                       ],
                                     ),
                                     child: ElevatedButton(
-                                      onPressed: (_isTogglingPompa || !isOn)
+                                      onPressed: _isTogglingPompa
                                           ? null
-                                          : () {
-                                              _togglePompa(false);
-                                            },
-                                      style: ElevatedButton.styleFrom(
-                                        minimumSize: const Size.fromHeight(48),
-                                        backgroundColor: Colors.transparent,
-                                        foregroundColor: Colors.white,
-                                        shadowColor: Colors.transparent,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                        ),
-                                      ),
+                                          : (!isOn
+                                                ? null
+                                                : () {
+                                                    _togglePompa(false);
+                                                  }),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
@@ -1354,6 +1339,21 @@ class _KontrolScreenState extends State<KontrolScreen> {
                                               ),
                                             ),
                                           ],
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(48),
+                                        backgroundColor: Colors.transparent,
+                                        foregroundColor: Colors.white,
+                                        shadowColor: Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1551,7 +1551,7 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 16),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/mode_otomatis')
+                .child('smartfarm/locations/$activeLocationId/mode_otomatis')
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {
@@ -1566,7 +1566,9 @@ class _KontrolScreenState extends State<KontrolScreen> {
           const SizedBox(height: 12),
           StreamBuilder<dynamic>(
             stream: db
-                .child('smartfarm/sensors/$activeVarietas/pompa')
+                .child(
+                  'smartfarm/locations/$activeLocationId/sensors/$activeVarietas/pompa',
+                )
                 .onValue
                 .map((e) => e.snapshot.value),
             builder: (context, snapshot) {

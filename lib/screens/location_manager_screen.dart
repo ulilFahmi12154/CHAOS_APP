@@ -51,7 +51,31 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
       final locList = List<Map<String, dynamic>>.from(data['locations'] ?? []);
       activeLocationId = data['active_location'] as String?;
 
-      locations = locList;
+      // Load address dari RTDB untuk setiap lokasi
+      List<Map<String, dynamic>> locsWithAddress = [];
+      for (var loc in locList) {
+        final locId = loc['id'] as String;
+        final rtdbSnapshot = await FirebaseDatabase.instance
+            .ref('smartfarm/locations/$locId')
+            .get();
+
+        if (rtdbSnapshot.exists) {
+          final rtdbData = rtdbSnapshot.value as Map<dynamic, dynamic>;
+          locsWithAddress.add({
+            'id': locId,
+            'name': rtdbData['name'] ?? loc['name'] ?? locId,
+            'address': rtdbData['address'] ?? 'Unknown Location',
+          });
+        } else {
+          locsWithAddress.add({
+            'id': locId,
+            'name': loc['name'] ?? locId,
+            'address': loc['address'] ?? 'Unknown Location',
+          });
+        }
+      }
+
+      locations = locsWithAddress;
       setState(() {
         loading = false;
       });
@@ -63,7 +87,7 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
     }
   }
 
-// PATCH untuk location_manager_screen.dart
+  // PATCH untuk location_manager_screen.dart
   // Ganti function _setActiveLocation() dengan yang ini:
 
   Future<void> _setActiveLocation(dynamic locationIdOrMap) async {
@@ -113,7 +137,6 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
       }
     }
   }
- 
 
   /// Auto-generate location ID: lokasi_1, lokasi_2, lokasi_3, dst
   Future<String> _generateLocationId() async {
@@ -291,7 +314,11 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
 
                     final updatedLocs = [
                       ...locations,
-                      {'id': locationId, 'name': nameController.text},
+                      {
+                        'id': locationId,
+                        'name': nameController.text,
+                        'address': address ?? 'Unknown Location',
+                      },
                     ];
 
                     await FirebaseFirestore.instance
@@ -461,9 +488,30 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
                       updates['address'] = address ?? 'Unknown Location';
                     }
 
+                    // Update RTDB
                     await FirebaseDatabase.instance
                         .ref('smartfarm/locations/${location['id']}')
                         .update(updates);
+
+                    // Update Firestore array juga
+                    final updatedLocs = locations.map((loc) {
+                      if (loc['id'] == location['id']) {
+                        return {
+                          'id': loc['id'],
+                          'name': nameController.text,
+                          'address':
+                              address ?? loc['address'] ?? 'Unknown Location',
+                        };
+                      }
+                      return loc;
+                    }).toList();
+
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user!.uid)
+                        .set({
+                          'locations': updatedLocs,
+                        }, SetOptions(merge: true));
 
                     if (context.mounted) {
                       Navigator.pop(context);
@@ -498,7 +546,9 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Lokasi'),
-        content: const Text('Apakah Anda yakin ingin menghapus lokasi ini?'),
+        content: const Text(
+          'Apakah Anda yakin ingin menghapus lokasi ini? Semua data sensor dan varietas di lokasi ini akan terhapus.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -506,6 +556,7 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Hapus'),
           ),
         ],
@@ -515,10 +566,15 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
     if (confirm != true) return;
 
     try {
+      print('🗑️ Deleting location: $locationId');
+
+      // 1. Hapus data lokasi di Realtime Database (termasuk sensors, varietas, dll)
       await FirebaseDatabase.instance
           .ref('smartfarm/locations/$locationId')
           .remove();
+      print('  ✓ RTDB data deleted');
 
+      // 2. Update Firestore - hapus locationId dari array locations
       final updatedLocs = locations
           .where((loc) => loc['id'] != locationId)
           .toList();
@@ -526,14 +582,36 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
         'locations': updatedLocs,
       }, SetOptions(merge: true));
+      print('  ✓ Firestore updated');
 
+      // 3. Jika lokasi yang dihapus adalah lokasi aktif, set lokasi pertama sebagai aktif
       if (activeLocationId == locationId && updatedLocs.isNotEmpty) {
         await _setActiveLocation(updatedLocs.first);
+        print('  ✓ Active location switched to ${updatedLocs.first['id']}');
+      }
+
+      print('✅ Location deleted successfully');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Lokasi dan semua datanya berhasil dihapus'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
 
       _loadLocations();
     } catch (e) {
-      print('Error deleting location: $e');
+      print('❌ Error deleting location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Gagal menghapus lokasi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -606,7 +684,46 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
                         color: isActive ? Colors.green.shade700 : null,
                       ),
                     ),
-                    subtitle: isActive ? const Text('Lokasi Aktif') : null,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isActive)
+                          Text(
+                            '✓ Lokasi Aktif',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        if (location['address'] != null &&
+                            location['address'] != 'Unknown Location' &&
+                            location['address'].toString().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.place,
+                                  size: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    location['address'],
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

@@ -51,7 +51,10 @@ class WelcomeScreen extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Colors.white.withOpacity(0.9),
-                          border: Border.all(color: const Color(0xFF1B5E20), width: 3),
+                          border: Border.all(
+                            color: const Color(0xFF1B5E20),
+                            width: 3,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.3),
