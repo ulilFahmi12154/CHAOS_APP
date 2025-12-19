@@ -3329,10 +3329,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           );
         } else if (title.toLowerCase().contains('tanaman')) {
-          Navigator.push(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => const KenaliTanamanmuScreen(),
+              builder: (context) => const MainNavigationScreen(
+                initialIndex: 8, // Kenali Tanamanmu
+              ),
             ),
           );
         }
@@ -3400,10 +3402,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 } else if (title.toLowerCase().contains('tanaman')) {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const KenaliTanamanmuScreen(),
+                      builder: (context) => const MainNavigationScreen(
+                        initialIndex: 8, // Kenali Tanamanmu
+                      ),
                     ),
                   );
                 }

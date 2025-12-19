@@ -618,139 +618,286 @@ class _LocationManagerScreenState extends State<LocationManagerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFE8F5E9),
       appBar: AppBar(
-        title: const Text('Kelola Lokasi'),
-        backgroundColor: Colors.green.shade700,
-        foregroundColor: Colors.white,
+        backgroundColor: const Color(0xFF1B5E20),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Kelola Lokasi',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : locations.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.location_off,
-                    size: 64,
-                    color: Colors.grey.shade400,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header dengan style konsisten seperti Profile
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF1B5E20),
+                      const Color(0xFF2E7D32),
+                      const Color(0xFF4CAF50),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Belum ada lokasi',
-                    style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: locations.length,
-              itemBuilder: (context, index) {
-                final location = locations[index];
-                final isActive = location['id'] == activeLocationId;
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: isActive ? 4 : 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: isActive
-                          ? Colors.green.shade700
-                          : Colors.grey.shade300,
-                      width: isActive ? 2 : 1,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2E7D32).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    leading: Container(
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isActive
-                            ? Colors.green.shade700
-                            : Colors.grey.shade300,
-                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 2,
+                        ),
                       ),
-                      child: Icon(
+                      child: const Icon(
                         Icons.location_on,
-                        color: isActive ? Colors.white : Colors.grey.shade700,
+                        color: Colors.white,
+                        size: 32,
                       ),
                     ),
-                    title: Text(
-                      location['name'] ?? 'Unnamed',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isActive ? Colors.green.shade700 : null,
-                      ),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isActive)
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            '✓ Lokasi Aktif',
+                            'Kelola Lokasi',
                             style: TextStyle(
-                              color: Colors.green.shade700,
-                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                        if (location['address'] != null &&
-                            location['address'] != 'Unknown Location' &&
-                            location['address'].toString().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
+                          SizedBox(height: 4),
+                          Text(
+                            'Tambah dan kelola lokasi lahan',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.map,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Body content
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : locations.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.location_off,
+                            size: 64,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Belum ada lokasi',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                      itemCount: locations.length,
+                      itemBuilder: (context, index) {
+                        final location = locations[index];
+                        final isActive = location['id'] == activeLocationId;
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: isActive ? 4 : 1,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: isActive
+                                  ? Colors.green.shade700
+                                  : Colors.grey.shade300,
+                              width: isActive ? 2 : 1,
+                            ),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isActive
+                                    ? Colors.green.shade700
+                                    : Colors.grey.shade300,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.location_on,
+                                color: isActive
+                                    ? Colors.white
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                            title: Text(
+                              location['name'] ?? 'Unnamed',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isActive ? Colors.green.shade700 : null,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  Icons.place,
-                                  size: 14,
-                                  color: Colors.grey.shade600,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    location['address'],
+                                if (isActive)
+                                  Text(
+                                    '✓ Lokasi Aktif',
                                     style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
+                                      color: Colors.green.shade700,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
+                                if (location['address'] != null &&
+                                    location['address'] != 'Unknown Location' &&
+                                    location['address'].toString().isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.place,
+                                          size: 14,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            location['address'],
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () => _editLocation(location),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete),
+                                  color: Colors.red,
+                                  onPressed: () =>
+                                      _deleteLocation(location['id']),
                                 ),
                               ],
                             ),
+                            onTap: !isActive
+                                ? () => _setActiveLocation(location['id'])
+                                : null,
                           ),
-                      ],
+                        );
+                      },
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _editLocation(location),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          color: Colors.red,
-                          onPressed: () => _deleteLocation(location['id']),
-                        ),
-                      ],
-                    ),
-                    onTap: !isActive
-                        ? () => _setActiveLocation(location['id'])
-                        : null,
-                  ),
-                );
-              },
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addLocation,
-        backgroundColor: Colors.green.shade700,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah Lokasi'),
+
+            // Footer button dengan style konsisten
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _addLocation,
+                    icon: const Icon(Icons.add, size: 20),
+                    label: const Text(
+                      'Tambah Lokasi',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

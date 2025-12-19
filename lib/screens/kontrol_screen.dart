@@ -609,53 +609,76 @@ class _KontrolScreenState extends State<KontrolScreen> {
 
   Widget _buildHeaderCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.green.shade600,
-            Colors.green.shade400,
-            Colors.green.shade300,
+            const Color(0xFF1B5E20),
+            const Color(0xFF2E7D32),
+            const Color(0xFF4CAF50),
           ],
-          stops: const [0.0, 0.75, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.shade400.withOpacity(0.6),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-            spreadRadius: 2,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: const Color(0xFF2E7D32).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text(
-            'Kontrol Sistem Irigasi',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 0.5,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 2,
+              ),
+            ),
+            child: const Icon(Icons.water_drop, color: Colors.white, size: 32),
+          ),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kontrol Sistem Irigasi',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Kelola pompa dan mode otomatis/manual',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Kelola pompa dan mode otomatis/manual',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.95),
-              letterSpacing: 0.3,
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.settings_remote,
+              color: Colors.white,
+              size: 24,
             ),
           ),
         ],

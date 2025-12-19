@@ -663,21 +663,25 @@ class _NutrientRecommendationScreenState
                             ),
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.lightbulb_outline,
                                 color: ecTextColor,
-                                size: 18,
+                                size: 16,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   ecAdvice,
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w600,
                                     color: ecTextColor,
                                   ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: true,
                                 ),
                               ),
                             ],
@@ -733,7 +737,9 @@ class _NutrientRecommendationScreenState
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Threshold disesuaikan fase $fase',
+                        'Fase $fase',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 10,
                           color: Colors.blue.shade700,
@@ -957,9 +963,12 @@ class _NutrientRecommendationScreenState
                                   Text(
                                     'N: $nStatus • P: $pStatus • K: $kStatus',
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       color: Colors.grey.shade600,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.fade,
+                                    softWrap: true,
                                   ),
                                 ],
                               ),
@@ -968,7 +977,10 @@ class _NutrientRecommendationScreenState
                         ),
                         const SizedBox(height: 10),
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.8),
                             borderRadius: BorderRadius.circular(8),
@@ -978,21 +990,25 @@ class _NutrientRecommendationScreenState
                             ),
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.lightbulb_outline,
                                 color: conditionTextColor,
-                                size: 20,
+                                size: 18,
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   plantAdvice,
                                   style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                     color: conditionTextColor,
                                   ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: true,
                                 ),
                               ),
                             ],
@@ -1103,6 +1119,9 @@ class _NutrientRecommendationScreenState
     Color statusColor,
     String status,
   ) {
+    final denom = (max - min);
+    final progress = denom <= 0 ? 0.0 : ((value - min) / denom).clamp(0.0, 1.0);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1121,15 +1140,19 @@ class _NutrientRecommendationScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -1142,6 +1165,8 @@ class _NutrientRecommendationScreenState
                 ),
                 child: Text(
                   status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -1166,28 +1191,30 @@ class _NutrientRecommendationScreenState
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Nilai Saat Ini',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Nilai Saat Ini',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
-                    ),
-                    Text(
-                      value.toStringAsFixed(0),
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
+                      Text(
+                        value.toStringAsFixed(0),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -1200,6 +1227,8 @@ class _NutrientRecommendationScreenState
                     ),
                     Text(
                       '${min.toStringAsFixed(0)} - ${max.toStringAsFixed(0)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1216,7 +1245,7 @@ class _NutrientRecommendationScreenState
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: ((value - min) / (max - min)).clamp(0.0, 1.0),
+              value: progress,
               minHeight: 6,
               backgroundColor: Colors.grey.shade300,
               valueColor: AlwaysStoppedAnimation<Color>(statusColor),
@@ -1281,6 +1310,11 @@ class _NutrientRecommendationScreenState
     double minValue,
     double maxValue,
   ) {
+    final denom = (maxValue - minValue);
+    final progress = denom <= 0
+        ? 0.0
+        : ((currentValue - minValue) / denom).clamp(0.0, 1.0);
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -1360,28 +1394,31 @@ class _NutrientRecommendationScreenState
                         child: Column(
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Nilai Saat Ini',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade600,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Nilai Saat Ini',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade600,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      currentValue.toStringAsFixed(0),
-                                      style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                        color: detail['color'],
+                                      Text(
+                                        currentValue.toStringAsFixed(0),
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: detail['color'],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
@@ -1394,6 +1431,8 @@ class _NutrientRecommendationScreenState
                                     ),
                                     Text(
                                       '${minValue.toStringAsFixed(0)} - ${maxValue.toStringAsFixed(0)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
@@ -1407,10 +1446,7 @@ class _NutrientRecommendationScreenState
                             ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(
-                                value:
-                                    ((currentValue - minValue) /
-                                            (maxValue - minValue))
-                                        .clamp(0.0, 1.0),
+                                value: progress,
                                 minHeight: 8,
                                 backgroundColor: Colors.grey.shade300,
                                 valueColor: AlwaysStoppedAnimation<Color>(

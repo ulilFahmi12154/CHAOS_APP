@@ -748,10 +748,30 @@ class _HistoryScreenState extends State<HistoryScreen>
 
     spots.sort((a, b) => a.x.compareTo(b.x));
 
-    // Configure axis for hourly view
-    _minX = 0;
-    _maxX = 23;
-    _bottomInterval = 4; // Show: 0, 4, 8, 12, 16, 20
+    // Configure axis for hourly view - adjust to actual data range
+    if (spots.isNotEmpty) {
+      final minHour = spots.first.x.floor().toDouble();
+      final maxHour = spots.last.x.ceil().toDouble();
+
+      // Add padding to make graph more readable
+      _minX = (minHour - 1).clamp(0, 23);
+      _maxX = (maxHour + 1).clamp(_minX + 1, 23);
+
+      // Adjust interval based on range
+      final range = _maxX - _minX;
+      if (range <= 6) {
+        _bottomInterval = 1; // Show every hour
+      } else if (range <= 12) {
+        _bottomInterval = 2; // Show every 2 hours
+      } else {
+        _bottomInterval = 4; // Show every 4 hours
+      }
+    } else {
+      // Default if no data
+      _minX = 0;
+      _maxX = 23;
+      _bottomInterval = 4;
+    }
 
     return spots;
   }
@@ -790,11 +810,32 @@ class _HistoryScreenState extends State<HistoryScreen>
 
     spots.sort((a, b) => a.x.compareTo(b.x));
 
-    // Configure axis for daily view
-    _minX = 1;
-    _maxX = 31;
-    // Set interval to 7 days
-    _bottomInterval = 7;
+    // Configure axis for daily view - adjust to actual data range
+    if (spots.isNotEmpty) {
+      final minDay = spots.first.x.floor().toDouble();
+      final maxDay = spots.last.x.ceil().toDouble();
+
+      // Add padding
+      _minX = (minDay - 1).clamp(1, 31);
+      _maxX = (maxDay + 1).clamp(_minX + 1, 31);
+
+      // Adjust interval based on range
+      final range = _maxX - _minX;
+      if (range <= 7) {
+        _bottomInterval = 1; // Show every day
+      } else if (range <= 14) {
+        _bottomInterval = 2; // Show every 2 days
+      } else if (range <= 21) {
+        _bottomInterval = 3; // Show every 3 days
+      } else {
+        _bottomInterval = 5; // Show every 5 days
+      }
+    } else {
+      // Default if no data
+      _minX = 1;
+      _maxX = 31;
+      _bottomInterval = 7;
+    }
 
     return spots;
   }
@@ -830,10 +871,29 @@ class _HistoryScreenState extends State<HistoryScreen>
 
     spots.sort((a, b) => a.x.compareTo(b.x));
 
-    // Configure axis for monthly view
-    _minX = 1;
-    _maxX = 12;
-    _bottomInterval = 1; // Show all months
+    // Configure axis for monthly view - adjust to actual data range
+    if (spots.isNotEmpty) {
+      final minMonth = spots.first.x.floor().toDouble();
+      final maxMonth = spots.last.x.ceil().toDouble();
+
+      _minX = minMonth;
+      _maxX = maxMonth;
+
+      // Adjust interval based on range
+      final range = _maxX - _minX + 1;
+      if (range <= 3) {
+        _bottomInterval = 1; // Show every month
+      } else if (range <= 6) {
+        _bottomInterval = 1; // Show every month
+      } else {
+        _bottomInterval = 2; // Show every 2 months
+      }
+    } else {
+      // Default if no data
+      _minX = 1;
+      _maxX = 12;
+      _bottomInterval = 1;
+    }
 
     return spots;
   }

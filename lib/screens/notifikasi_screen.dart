@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:chaos_app/screens/warning_detail_screen.dart';
 import 'package:chaos_app/services/notification_read_cache.dart';
-import 'package:chaos_app/services/local_notification_service.dart';
 
 Widget _buildSimpleNotifCard({
   required String title,
@@ -116,13 +114,11 @@ class NotifikasiScreen extends StatefulWidget {
   State<NotifikasiScreen> createState() => _NotifikasiScreenState();
 }
 
-class _NotifikasiScreenState extends State<NotifikasiScreen>
-    with SingleTickerProviderStateMixin {
+class _NotifikasiScreenState extends State<NotifikasiScreen> {
   late Stream<List<Map<String, dynamic>>> _warningStream;
   final Set<String> _readNotifications = {};
   String? _currentUserId;
   String? _userVarietas;
-  late TabController _tabController;
 
   bool _isReadValue(dynamic v) {
     return v == true || v == 'true' || v == 1 || v == '1';
@@ -131,13 +127,11 @@ class _NotifikasiScreenState extends State<NotifikasiScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _initializeUser();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -375,27 +369,8 @@ class _NotifikasiScreenState extends State<NotifikasiScreen>
 
     return Column(
       children: [
-        // Tab Bar
-        Container(
-          color: Colors.white,
-          child: TabBar(
-            controller: _tabController,
-            labelColor: const Color(0xFF2E7D32),
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: const Color(0xFF2E7D32),
-            tabs: const [
-              Tab(text: 'Peringatan Sensor'),
-              Tab(text: 'Pengingat Tugas'),
-            ],
-          ),
-        ),
-        // Tab Views
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [_buildWarningsTab(), _buildTaskRemindersTab()],
-          ),
-        ),
+        // Peringatan Sensor
+        Expanded(child: _buildWarningsTab()),
       ],
     );
   }
@@ -597,367 +572,6 @@ class _NotifikasiScreenState extends State<NotifikasiScreen>
         ],
       ),
     );
-  }
-
-  Widget _buildTaskRemindersTab() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return const Center(child: Text('Silakan login terlebih dahulu'));
-    }
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('task_notifications')
-          .orderBy('scheduledDate', descending: true)
-          .limit(50)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('Error: ${snapshot.error}'),
-            ),
-          );
-        }
-
-        final notifications = snapshot.data?.docs ?? [];
-
-        if (notifications.isEmpty) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.notifications_none,
-                    size: 64,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Belum ada pengingat tugas',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Atur waktu tanam di Pengaturan untuk menjadwalkan pengingat',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with Clear All button
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.blue.shade200,
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        '${notifications.length} Pengingat',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1565C0),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.red.shade200,
-                          width: 1,
-                        ),
-                      ),
-                      child: TextButton.icon(
-                        onPressed: () => _clearAllTaskNotifications(),
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: const Text('Hapus Semua'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red.shade700,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Notification List
-              Column(
-                children: notifications.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final title = data['title'] ?? '';
-                  final message = data['message'] ?? '';
-                  final scheduledDate = data['scheduledDate'] as int?;
-                  final isRead = data['isRead'] as bool? ?? false;
-                  final taskDay = data['taskDay'] as int? ?? 0;
-                  final taskType = data['taskType'] ?? '';
-
-                  // Format date
-                  String dateLabel = '';
-                  if (scheduledDate != null) {
-                    final dt = DateTime.fromMillisecondsSinceEpoch(
-                      scheduledDate,
-                    );
-                    final now = DateTime.now();
-                    final today = DateTime(now.year, now.month, now.day);
-                    final tomorrow = today.add(const Duration(days: 1));
-                    final itemDate = DateTime(dt.year, dt.month, dt.day);
-                    final timeStr = DateFormat('HH:mm').format(dt);
-
-                    if (itemDate == today) {
-                      dateLabel = 'Hari Ini, $timeStr';
-                    } else if (itemDate == tomorrow) {
-                      dateLabel = 'Besok, $timeStr';
-                    } else {
-                      dateLabel =
-                          '${DateFormat('d MMM yyyy', 'id_ID').format(dt)}, $timeStr';
-                    }
-                  }
-
-                  // Icon and color based on task type
-                  IconData taskIcon;
-                  Color taskColor;
-                  switch (taskType) {
-                    case 'Vegetatif':
-                      taskIcon = Icons.grass;
-                      taskColor = const Color(0xFF66BB6A);
-                      break;
-                    case 'Generatif':
-                      taskIcon = Icons.spa;
-                      taskColor = const Color(0xFF42A5F5);
-                      break;
-                    case 'Pembungaan':
-                      taskIcon = Icons.local_florist;
-                      taskColor = const Color(0xFFEC407A);
-                      break;
-                    case 'Pembuahan':
-                      taskIcon = Icons.agriculture;
-                      taskColor = const Color(0xFFFF7043);
-                      break;
-                    case 'Panen':
-                      taskIcon = Icons.celebration;
-                      taskColor = const Color(0xFFFFA726);
-                      break;
-                    default:
-                      taskIcon = Icons.event;
-                      taskColor = Colors.grey;
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: InkWell(
-                      onTap: () => _markTaskAsRead(doc.id),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isRead
-                              ? Colors.white
-                              : const Color(0xFFF0F4FF),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isRead
-                                ? Colors.grey.shade200
-                                : Colors.blue.shade200,
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Stack(
-                              children: [
-                                Icon(taskIcon, size: 28, color: taskColor),
-                                if (!isRead)
-                                  Positioned(
-                                    right: 0,
-                                    top: 0,
-                                    child: Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    style: TextStyle(
-                                      fontWeight: isRead
-                                          ? FontWeight.w600
-                                          : FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    message,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: taskColor.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          taskType,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: taskColor,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Hari ke-$taskDay',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  dateLabel,
-                                  style: TextStyle(
-                                    color: taskColor,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _markTaskAsRead(String notificationId) async {
-    await LocalNotificationService.markAsRead(notificationId);
-  }
-
-  Future<void> _clearAllTaskNotifications() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hapus Semua Pengingat?'),
-        content: const Text(
-          'Apakah Anda yakin ingin menghapus semua riwayat pengingat tugas?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await LocalNotificationService.clearAllHistory();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Semua pengingat berhasil dihapus'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    }
   }
 
   String _formatTimestamp(dynamic timestamp) {
